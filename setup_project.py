@@ -19,7 +19,6 @@ def generate_signature_alarm_wav(filepath):
         for i in range(num_samples):
             t = i / sample_rate
             cycle = t % 1.0
-            # Pola 3 ketukan agresif + sirine naik turun
             if cycle < 0.22:
                 freq = 880.0 + (cycle * 1400.0)
                 env = 0.95
@@ -33,7 +32,6 @@ def generate_signature_alarm_wav(filepath):
                 freq = 220.0
                 env = 0.15
 
-            # Gelombang utama + harmonik sub-bass agar lantang di speaker HP
             val = (
                 0.65 * math.sin(2.0 * math.pi * freq * t) +
                 0.25 * math.sin(2.0 * math.pi * (freq * 1.5) * t) +
@@ -48,7 +46,7 @@ def generate_signature_alarm_wav(filepath):
 generate_signature_alarm_wav("app/src/main/res/raw/wake_up_speech.wav")
 
 files = {
-    "settings.gradle.kts": """pluginManagement {
+    "settings.gradle.kts": r"""pluginManagement {
     repositories {
         google()
         mavenCentral()
@@ -66,19 +64,19 @@ rootProject.name = "IronWake"
 include(":app")
 """,
 
-    "build.gradle.kts": """plugins {
+    "build.gradle.kts": r"""plugins {
     id("com.android.application") version "8.2.2" apply false
     id("org.jetbrains.kotlin.android") version "1.9.22" apply false
 }
 """,
 
-    "gradle.properties": """org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+    "gradle.properties": r"""org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
 android.useAndroidX=true
 kotlin.code.style=official
 android.nonTransitiveRClass=true
 """,
 
-    "app/build.gradle.kts": """plugins {
+    "app/build.gradle.kts": r"""plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
@@ -123,12 +121,12 @@ dependencies {
 }
 """,
 
-    "app/src/main/res/values/strings.xml": """<resources>
+    "app/src/main/res/values/strings.xml": r"""<resources>
     <string name="app_name">IronWake Alarm</string>
 </resources>
 """,
 
-    "app/src/main/res/xml/device_admin_policies.xml": """<?xml version="1.0" encoding="utf-8"?>
+    "app/src/main/res/xml/device_admin_policies.xml": r"""<?xml version="1.0" encoding="utf-8"?>
 <device-admin xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-policies>
         <force-lock />
@@ -136,7 +134,7 @@ dependencies {
 </device-admin>
 """,
 
-    "app/src/main/res/drawable/ic_launcher_background.xml": """<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    "app/src/main/res/drawable/ic_launcher_background.xml": r"""<vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
@@ -147,7 +145,7 @@ dependencies {
 </vector>
 """,
 
-    "app/src/main/res/drawable/ic_launcher_foreground.xml": """<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    "app/src/main/res/drawable/ic_launcher_foreground.xml": r"""<vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
@@ -170,21 +168,21 @@ dependencies {
 </vector>
 """,
 
-    "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml": """<?xml version="1.0" encoding="utf-8"?>
+    "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml": r"""<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/ic_launcher_background" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />
 </adaptive-icon>
 """,
 
-    "app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml": """<?xml version="1.0" encoding="utf-8"?>
+    "app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml": r"""<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/ic_launcher_background" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />
 </adaptive-icon>
 """,
 
-    "app/src/main/res/drawable/bg_boxer_punch.xml": """<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    "app/src/main/res/drawable/bg_boxer_punch.xml": r"""<vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="400dp"
     android:height="800dp"
     android:viewportWidth="400"
@@ -199,7 +197,7 @@ dependencies {
 </vector>
 """,
 
-    "app/src/main/AndroidManifest.xml": """<?xml version="1.0" encoding="utf-8"?>
+    "app/src/main/AndroidManifest.xml": r"""<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
@@ -271,7 +269,7 @@ dependencies {
 </manifest>
 """,
 
-    "app/src/main/java/com/example/ironwake/ui/theme/Theme.kt": """package com.example.ironwake.ui.theme
+    "app/src/main/java/com/example/ironwake/ui/theme/Theme.kt": r"""package com.example.ironwake.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -304,7 +302,7 @@ fun IronWakeTheme(content: @Composable () -> Unit) {
 }
 """,
 
-    "app/src/main/java/com/example/ironwake/model/MathProblem.kt": """package com.example.ironwake.model
+    "app/src/main/java/com/example/ironwake/model/MathProblem.kt": r"""package com.example.ironwake.model
 
 enum class MathTopic(val displayName: String) {
     QUADRATIC("Persamaan Kuadrat & Akar"),
@@ -328,7 +326,7 @@ data class MathProblem(
 )
 """,
 
-    "app/src/main/java/com/example/ironwake/util/MathGenerator.kt": """package com.example.ironwake.util
+    "app/src/main/java/com/example/ironwake/util/MathGenerator.kt": r"""package com.example.ironwake.util
 
 import com.example.ironwake.model.Difficulty
 import com.example.ironwake.model.MathProblem
@@ -359,7 +357,7 @@ object MathGenerator {
         return if (difficulty == Difficulty.NORMAL) {
             MathProblem(
                 topic = MathTopic.QUADRATIC,
-                question = "Jika x₁ dan x₂ akar dari:\\nx² $bStr $cStr = 0\\nTentukan nilai (x₁ + x₂)!",
+                question = "Jika x₁ dan x₂ akar dari:\nx² $bStr $cStr = 0\nTentukan nilai (x₁ + x₂)!",
                 correctAnswer = x1 + x2,
                 hint = "Gunakan rumus jumlah akar Vieta: x₁ + x₂ = -b / a",
                 tutorSteps = listOf(
@@ -373,7 +371,7 @@ object MathGenerator {
         } else {
             MathProblem(
                 topic = MathTopic.QUADRATIC,
-                question = "Akar persamaan x² $bStr $cStr = 0 adalah x₁ dan x₂.\\nHitung nilai x₁² + x₂²!",
+                question = "Akar persamaan x² $bStr $cStr = 0 adalah x₁ dan x₂.\nHitung nilai x₁² + x₂²!",
                 correctAnswer = (x1 * x1) + (x2 * x2),
                 hint = "Ubah bentuk menjadi (x₁ + x₂)² - 2(x₁·x₂)",
                 tutorSteps = listOf(
@@ -397,7 +395,7 @@ object MathGenerator {
             val val2 = base2.toDouble().pow(exp2).toInt()
             MathProblem(
                 topic = MathTopic.LOG_EXP,
-                question = "Hitung nilai:\\n^${base1}log($val1) + ^${base2}log($val2) = ...",
+                question = "Hitung nilai:\n^${base1}log($val1) + ^${base2}log($val2) = ...",
                 correctAnswer = exp1 + exp2,
                 hint = "Ingat sifat dasar logaritma: ᵃlog(aⁿ) = n",
                 tutorSteps = listOf(
@@ -415,9 +413,9 @@ object MathGenerator {
             val rhs = base.toDouble().pow(expRes).toInt()
             MathProblem(
                 topic = MathTopic.LOG_EXP,
-                question = "Tentukan nilai x:\\n$base^(2x - $k) = $rhs",
+                question = "Tentukan nilai x:\n$base^(2x - $k) = $rhs",
                 correctAnswer = x,
-                hint = "Samakan basis pangkat di ruas kiri dan kanan ($baseⁿ)",
+                hint = "Samakan basis pangkat di ruas kiri dan kanan (${base}^n)",
                 tutorSteps = listOf(
                     "Ubah ruas kanan ($rhs) menjadi bilangan berpangkat dengan basis $base:",
                     "Karena $base^$expRes = $rhs, maka persamaan menjadi: $base^(2x - $k) = $base^$expRes.",
@@ -437,7 +435,7 @@ object MathGenerator {
             val k = if (difficulty == Difficulty.NORMAL) Random.nextInt(1, 3) else Random.nextInt(2, 5)
             MathProblem(
                 topic = MathTopic.CALCULUS,
-                question = "Diketahui f(x) = ${a}x³ + ${b}x² + ${c}x.\\nTentukan f'($k)!",
+                question = "Diketahui f(x) = ${a}x³ + ${b}x² + ${c}x.\nTentukan f'($k)!",
                 correctAnswer = (3 * a * k * k) + (2 * b * k) + c,
                 hint = "Turunan axⁿ adalah (a·n)xⁿ⁻¹",
                 tutorSteps = listOf(
@@ -454,7 +452,7 @@ object MathGenerator {
             val upper = Random.nextInt(2, 4)
             MathProblem(
                 topic = MathTopic.CALCULUS,
-                question = "Hitung integral tentu:\\n∫ (0 sampai $upper) (${3 * a}x² + ${2 * c}x) dx",
+                question = "Hitung integral tentu:\n∫ (0 sampai $upper) (${3 * a}x² + ${2 * c}x) dx",
                 correctAnswer = (a * upper * upper * upper) + (c * upper * upper),
                 hint = "Integral axⁿ dx = [a/(n+1)]xⁿ⁺¹",
                 tutorSteps = listOf(
@@ -475,7 +473,7 @@ object MathGenerator {
             val n = if (difficulty == Difficulty.NORMAL) Random.nextInt(8, 15) else Random.nextInt(15, 25)
             MathProblem(
                 topic = MathTopic.SEQUENCE,
-                question = "Barisan aritmatika a = $a dan b = $b.\\nTentukan suku ke-$n (U$n)!",
+                question = "Barisan aritmatika a = $a dan b = $b.\nTentukan suku ke-$n (U$n)!",
                 correctAnswer = a + (n - 1) * b,
                 hint = "Gunakan rumus suku ke-n aritmatika: Un = a + (n - 1)b",
                 tutorSteps = listOf(
@@ -492,7 +490,7 @@ object MathGenerator {
             val n = Random.nextInt(4, 6)
             MathProblem(
                 topic = MathTopic.SEQUENCE,
-                question = "Barisan geometri a = $a dan r = $r.\\nTentukan suku ke-$n (U$n)!",
+                question = "Barisan geometri a = $a dan r = $r.\nTentukan suku ke-$n (U$n)!",
                 correctAnswer = a * r.toDouble().pow(n - 1).toInt(),
                 hint = "Gunakan rumus suku ke-n geometri: Un = a · rⁿ⁻¹",
                 tutorSteps = listOf(
@@ -514,7 +512,7 @@ object MathGenerator {
             val d = Random.nextInt(2, 9)
             MathProblem(
                 topic = MathTopic.TRIG_MATRIX,
-                question = "Matriks A = [ [$a, $b], [$c, $d] ].\\nTentukan det(A)!",
+                question = "Matriks A = [ [$a, $b], [$c, $d] ].\nTentukan det(A)!",
                 correctAnswer = (a * d) - (b * c),
                 hint = "Determinan matriks 2x2 = (a · d) - (b · c)",
                 tutorSteps = listOf(
@@ -570,7 +568,7 @@ object MathGenerator {
 }
 """,
 
-    "app/src/main/java/com/example/ironwake/util/AlarmScheduler.kt": """package com.example.ironwake.util
+    "app/src/main/java/com/example/ironwake/util/AlarmScheduler.kt": r"""package com.example.ironwake.util
 
 import android.app.AlarmManager
 import android.app.PendingIntent
@@ -608,7 +606,7 @@ object AlarmScheduler {
 }
 """,
 
-    "app/src/main/java/com/example/ironwake/receiver/AlarmReceiver.kt": """package com.example.ironwake.receiver
+    "app/src/main/java/com/example/ironwake/receiver/AlarmReceiver.kt": r"""package com.example.ironwake.receiver
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -628,7 +626,7 @@ class AlarmReceiver : BroadcastReceiver() {
 }
 """,
 
-    "app/src/main/java/com/example/ironwake/receiver/IronWakeAdminReceiver.kt": """package com.example.ironwake.receiver
+    "app/src/main/java/com/example/ironwake/receiver/IronWakeAdminReceiver.kt": r"""package com.example.ironwake.receiver
 
 import android.app.admin.DeviceAdminReceiver
 import android.content.Context
@@ -652,7 +650,7 @@ class IronWakeAdminReceiver : DeviceAdminReceiver() {
 }
 """,
 
-    "app/src/main/java/com/example/ironwake/service/AlarmService.kt": """package com.example.ironwake.service
+    "app/src/main/java/com/example/ironwake/service/AlarmService.kt": r"""package com.example.ironwake.service
 
 import android.app.*
 import android.content.Context
@@ -767,7 +765,6 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
             vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
         }
 
-        // Putar audio sirine tinju khas IronWake (res/raw/wake_up_speech.wav)
         if (mediaPlayer == null) {
             val rawResId = resources.getIdentifier("wake_up_speech", "raw", packageName)
             if (rawResId != 0) {
@@ -878,7 +875,7 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
 }
 """,
 
-    "app/src/main/java/com/example/ironwake/AlarmRingingActivity.kt": """package com.example.ironwake
+    "app/src/main/java/com/example/ironwake/AlarmRingingActivity.kt": r"""package com.example.ironwake
 
 import android.app.KeyguardManager
 import android.content.Context
@@ -981,7 +978,7 @@ class AlarmRingingActivity : ComponentActivity() {
 }
 """,
 
-    "app/src/main/java/com/example/ironwake/ui/screens/RingingScreen.kt": """package com.example.ironwake.ui.screens
+    "app/src/main/java/com/example/ironwake/ui/screens/RingingScreen.kt": r"""package com.example.ironwake.ui.screens
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -1031,14 +1028,12 @@ fun RingingScreen(
     var userAnswer by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Status fase: false = Layar Alarm Berbunyi, true = Layar Fokus Pengerjaan Soal
     var isStudying by remember { mutableStateOf(false) }
     var hasTimedOutBefore by remember { mutableStateOf(false) }
     var timeLeft by remember { mutableIntStateOf(difficulty.durationSeconds) }
     var showTutorDialog by remember { mutableStateOf(false) }
     var isCelebrating by remember { mutableStateOf(false) }
 
-    // Hitung mundur timer saat berada di mode pengerjaan soal
     LaunchedEffect(isStudying, currentStep, isCelebrating) {
         if (isStudying && !isCelebrating) {
             timeLeft = difficulty.durationSeconds
@@ -1046,7 +1041,6 @@ fun RingingScreen(
                 delay(1000L)
                 timeLeft--
             }
-            // Waktu pengerjaan habis -> kembali ke layar alarm & nyalakan suara alarm lagi
             showTutorDialog = false
             isStudying = false
             hasTimedOutBefore = true
@@ -1106,7 +1100,6 @@ fun RingingScreen(
         )
 
         when {
-            // ================= FASE 3: PERAYAAN KEMENANGAN =================
             isCelebrating -> {
                 val confettiPoints = remember {
                     List(45) {
@@ -1183,7 +1176,6 @@ fun RingingScreen(
                 }
             }
 
-            // ================= FASE 2: RUANG FOKUS PENGERJAAN SOAL =================
             isStudying -> {
                 Column(
                     modifier = Modifier
@@ -1192,7 +1184,6 @@ fun RingingScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Header: Progress & Timer Hitung Mundur
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1213,7 +1204,6 @@ fun RingingScreen(
                                 )
                             }
 
-                            // Indikator Sisa Waktu Pengerjaan
                             val timerColor = if (timeLeft <= 15) IronCrimson else IronGold
                             Surface(
                                 color = timerColor.copy(alpha = 0.15f),
@@ -1253,7 +1243,6 @@ fun RingingScreen(
                         )
                     }
 
-                    // Kartu Soal & Tombol Ikon Pengajar
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xF0131B2E)),
                         shape = RoundedCornerShape(18.dp),
@@ -1278,7 +1267,6 @@ fun RingingScreen(
                                     modifier = Modifier.weight(1f)
                                 )
 
-                                // Tombol Ikon Pengajar / Pendamping Belajar
                                 FilledTonalButton(
                                     onClick = { showTutorDialog = true },
                                     colors = ButtonDefaults.filledTonalButtonColors(
@@ -1365,7 +1353,6 @@ fun RingingScreen(
                 }
             }
 
-            // ================= FASE 1: TAMPILAN ALARM BERBUNYI =================
             else -> {
                 Column(
                     modifier = Modifier
@@ -1426,7 +1413,6 @@ fun RingingScreen(
                         )
                     }
 
-                    // Tombol Utama: Mulai / Lanjutkan Soal
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                         Surface(
                             color = IronSurface.copy(alpha = 0.9f),
@@ -1472,7 +1458,6 @@ fun RingingScreen(
             }
         }
 
-        // ================= DIALOG PENDAMPING BELAJAR (PENGAJAR) =================
         if (showTutorDialog) {
             AlertDialog(
                 onDismissRequest = { showTutorDialog = false },
@@ -1544,7 +1529,7 @@ fun RingingScreen(
 }
 """,
 
-    "app/src/main/java/com/example/ironwake/ui/screens/HomeScreen.kt": """package com.example.ironwake.ui.screens
+    "app/src/main/java/com/example/ironwake/ui/screens/HomeScreen.kt": r"""package com.example.ironwake.ui.screens
 
 import android.app.TimePickerDialog
 import android.content.Context
@@ -1748,7 +1733,7 @@ fun HomeScreen() {
 }
 """,
 
-    "app/src/main/java/com/example/ironwake/MainActivity.kt": """package com.example.ironwake
+    "app/src/main/java/com/example/ironwake/MainActivity.kt": r"""package com.example.ironwake
 
 import android.Manifest
 import android.app.AlarmManager
@@ -1802,4 +1787,4 @@ for path, content in files.items():
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
-print("Semua file proyek IronWake v5.0 (Tutor Mode + Audio Khas) berhasil dibuat!")
+print("Semua file proyek IronWake v5.0 (Clean Raw String) berhasil dibuat!")
