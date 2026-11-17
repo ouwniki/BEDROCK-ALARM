@@ -1,4 +1,51 @@
 import os
+import wave
+import math
+import struct
+
+def generate_signature_alarm_wav(filepath):
+    """Membangkitkan audio sirine tinju + ritme ketukan khas IronWake secara offline."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    sample_rate = 22050
+    duration = 4.0
+    num_samples = int(sample_rate * duration)
+
+    with wave.open(filepath, 'w') as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+
+        frames = bytearray()
+        for i in range(num_samples):
+            t = i / sample_rate
+            cycle = t % 1.0
+            # Pola 3 ketukan agresif + sirine naik turun
+            if cycle < 0.22:
+                freq = 880.0 + (cycle * 1400.0)
+                env = 0.95
+            elif 0.28 <= cycle < 0.50:
+                freq = 980.0 + ((cycle - 0.28) * 1600.0)
+                env = 0.95
+            elif 0.56 <= cycle < 0.88:
+                freq = 1150.0 - ((cycle - 0.56) * 900.0)
+                env = 1.0
+            else:
+                freq = 220.0
+                env = 0.15
+
+            # Gelombang utama + harmonik sub-bass agar lantang di speaker HP
+            val = (
+                0.65 * math.sin(2.0 * math.pi * freq * t) +
+                0.25 * math.sin(2.0 * math.pi * (freq * 1.5) * t) +
+                0.10 * math.sin(2.0 * math.pi * 110.0 * t)
+            ) * env
+
+            sample = max(-32767, min(32767, int(val * 32767)))
+            frames.extend(struct.pack('<h', sample))
+
+        wav_file.writeframes(bytes(frames))
+
+generate_signature_alarm_wav("app/src/main/res/raw/wake_up_speech.wav")
 
 files = {
     "settings.gradle.kts": """pluginManagement {
@@ -44,8 +91,8 @@ android {
         applicationId = "com.example.ironwake"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 5
+        versionName = "5.0"
     }
 
     buildFeatures {
@@ -237,6 +284,7 @@ val IronRed = Color(0xFFD32F2F)
 val IronCrimson = Color(0xFFFF1744)
 val IronGold = Color(0xFFFFD700)
 val IronEmerald = Color(0xFF00E676)
+val IronCyan = Color(0xFF00E5FF)
 
 private val IronDarkColorScheme = darkColorScheme(
     primary = IronRed,
@@ -266,16 +314,17 @@ enum class MathTopic(val displayName: String) {
     TRIG_MATRIX("Trigonometri & Matriks 2x2")
 }
 
-enum class Difficulty(val label: String) {
-    NORMAL("Standar SMA"),
-    HARD("Intensif UTBK")
+enum class Difficulty(val label: String, val durationSeconds: Int) {
+    NORMAL("Standar SMA (90 dtk)", 90),
+    HARD("Intensif UTBK (60 dtk)", 60)
 }
 
 data class MathProblem(
     val topic: MathTopic,
     val question: String,
     val correctAnswer: Int,
-    val hint: String
+    val hint: String,
+    val tutorSteps: List<String>
 )
 """,
 
@@ -308,9 +357,33 @@ object MathGenerator {
         val cStr = if (c >= 0) "+ $c" else "- ${-c}"
 
         return if (difficulty == Difficulty.NORMAL) {
-            MathProblem(MathTopic.QUADRATIC, "Jika x₁ dan x₂ akar dari:\\nx² $bStr $cStr = 0\\nTentukan nilai (x₁ + x₂)!", x1 + x2, "x₁ + x₂ = -b/a")
+            MathProblem(
+                topic = MathTopic.QUADRATIC,
+                question = "Jika x₁ dan x₂ akar dari:\\nx² $bStr $cStr = 0\\nTentukan nilai (x₁ + x₂)!",
+                correctAnswer = x1 + x2,
+                hint = "Gunakan rumus jumlah akar Vieta: x₁ + x₂ = -b / a",
+                tutorSteps = listOf(
+                    "Identifikasi koefisien persamaan kuadrat ax² + bx + c = 0:",
+                    "Didapat a = 1, b = $b, dan c = $c.",
+                    "Gunakan rumus Vieta untuk jumlah akar: x₁ + x₂ = -b / a.",
+                    "Substitusikan nilai: x₁ + x₂ = -($b) / 1.",
+                    "Hitung hasil akhirnya dan masukkan ke kolom jawaban!"
+                )
+            )
         } else {
-            MathProblem(MathTopic.QUADRATIC, "Akar persamaan x² $bStr $cStr = 0 adalah x₁ dan x₂.\\nHitung nilai x₁² + x₂²!", (x1 * x1) + (x2 * x2), "(x₁ + x₂)² - 2(x₁·x₂)")
+            MathProblem(
+                topic = MathTopic.QUADRATIC,
+                question = "Akar persamaan x² $bStr $cStr = 0 adalah x₁ dan x₂.\\nHitung nilai x₁² + x₂²!",
+                correctAnswer = (x1 * x1) + (x2 * x2),
+                hint = "Ubah bentuk menjadi (x₁ + x₂)² - 2(x₁·x₂)",
+                tutorSteps = listOf(
+                    "Dari x² $bStr $cStr = 0, tentukan a = 1, b = $b, c = $c.",
+                    "Cari jumlah akar: x₁ + x₂ = -b/a = ${-b}.",
+                    "Cari hasil kali akar: x₁ · x₂ = c/a = $c.",
+                    "Gunakan identitas aljabar: x₁² + x₂² = (x₁ + x₂)² - 2(x₁ · x₂).",
+                    "Substitusi: (${-b})² - 2($c), lalu hitung hasil akhirnya!"
+                )
+            )
         }
     }
 
@@ -322,14 +395,37 @@ object MathGenerator {
             val base2 = listOf(2, 3, 4).random()
             val exp2 = Random.nextInt(1, 4)
             val val2 = base2.toDouble().pow(exp2).toInt()
-            MathProblem(MathTopic.LOG_EXP, "Hitung nilai:\\n^${base1}log($val1) + ^${base2}log($val2) = ...", exp1 + exp2, "ᵃlog(aⁿ) = n")
+            MathProblem(
+                topic = MathTopic.LOG_EXP,
+                question = "Hitung nilai:\\n^${base1}log($val1) + ^${base2}log($val2) = ...",
+                correctAnswer = exp1 + exp2,
+                hint = "Ingat sifat dasar logaritma: ᵃlog(aⁿ) = n",
+                tutorSteps = listOf(
+                    "Ubah angka di dalam logaritma menjadi bentuk pangkat dari basisnya:",
+                    "Suku pertama: $val1 = $base1 pangkat berapa? ($base1^$exp1 = $val1), sehingga ^${base1}log($val1) = $exp1.",
+                    "Suku kedua: $val2 = $base2 pangkat berapa? ($base2^$exp2 = $val2), sehingga ^${base2}log($val2) = $exp2.",
+                    "Jumlahkan kedua hasil pangkat tersebut ($exp1 + $exp2)!"
+                )
+            )
         } else {
             val base = listOf(2, 3, 5).random()
             val x = Random.nextInt(2, 7)
             val k = Random.nextInt(1, 5)
             val expRes = (2 * x) - k
             val rhs = base.toDouble().pow(expRes).toInt()
-            MathProblem(MathTopic.LOG_EXP, "Tentukan nilai x:\\n$base^(2x - $k) = $rhs", x, "2x - $k = $expRes")
+            MathProblem(
+                topic = MathTopic.LOG_EXP,
+                question = "Tentukan nilai x:\\n$base^(2x - $k) = $rhs",
+                correctAnswer = x,
+                hint = "Samakan basis pangkat di ruas kiri dan kanan ($baseⁿ)",
+                tutorSteps = listOf(
+                    "Ubah ruas kanan ($rhs) menjadi bilangan berpangkat dengan basis $base:",
+                    "Karena $base^$expRes = $rhs, maka persamaan menjadi: $base^(2x - $k) = $base^$expRes.",
+                    "Karena basis sudah sama, samakan pangkatnya: 2x - $k = $expRes.",
+                    "Pindahkan -$k ke ruas kanan: 2x = $expRes + $k = ${expRes + k}.",
+                    "Bagi kedua ruas dengan 2 untuk mendapatkan nilai x!"
+                )
+            )
         }
     }
 
@@ -339,12 +435,36 @@ object MathGenerator {
             val b = Random.nextInt(2, 7)
             val c = Random.nextInt(1, 10)
             val k = if (difficulty == Difficulty.NORMAL) Random.nextInt(1, 3) else Random.nextInt(2, 5)
-            MathProblem(MathTopic.CALCULUS, "Diketahui f(x) = ${a}x³ + ${b}x² + ${c}x.\\nTentukan f'($k)!", (3 * a * k * k) + (2 * b * k) + c, "f'(x) = ${3 * a}x² + ${2 * b}x + $c")
+            MathProblem(
+                topic = MathTopic.CALCULUS,
+                question = "Diketahui f(x) = ${a}x³ + ${b}x² + ${c}x.\\nTentukan f'($k)!",
+                correctAnswer = (3 * a * k * k) + (2 * b * k) + c,
+                hint = "Turunan axⁿ adalah (a·n)xⁿ⁻¹",
+                tutorSteps = listOf(
+                    "Turunkan setiap suku f(x) menggunakan aturan pangkat d/dx(xⁿ) = n·xⁿ⁻¹:",
+                    "Turunan ${a}x³ adalah ${3 * a}x².",
+                    "Turunan ${b}x² adalah ${2 * b}x, dan turunan ${c}x adalah $c.",
+                    "Diperoleh f'(x) = ${3 * a}x² + ${2 * b}x + $c.",
+                    "Substitusikan x = $k: ${3 * a}($k)² + ${2 * b}($k) + $c, lalu jumlahkan!"
+                )
+            )
         } else {
             val a = Random.nextInt(1, 3)
             val c = Random.nextInt(1, 5)
             val upper = Random.nextInt(2, 4)
-            MathProblem(MathTopic.CALCULUS, "Hitung integral tentu:\\n∫ (0 sampai $upper) (${3 * a}x² + ${2 * c}x) dx", (a * upper * upper * upper) + (c * upper * upper), "[${a}x³ + ${c}x²] dari 0 ke $upper")
+            MathProblem(
+                topic = MathTopic.CALCULUS,
+                question = "Hitung integral tentu:\\n∫ (0 sampai $upper) (${3 * a}x² + ${2 * c}x) dx",
+                correctAnswer = (a * upper * upper * upper) + (c * upper * upper),
+                hint = "Integral axⁿ dx = [a/(n+1)]xⁿ⁺¹",
+                tutorSteps = listOf(
+                    "Cari anti-turunan (integral tak tentu) dari (${3 * a}x² + ${2 * c}x):",
+                    "∫ ${3 * a}x² dx = (${3 * a}/3)x³ = ${a}x³.",
+                    "∫ ${2 * c}x dx = (${2 * c}/2)x² = ${c}x².",
+                    "Masukkan batas atas x = $upper dan batas bawah x = 0 ke F(x) = ${a}x³ + ${c}x².",
+                    "Hitung F($upper) - F(0) = [${a}($upper)³ + ${c}($upper)²] - 0!"
+                )
+            )
         }
     }
 
@@ -353,12 +473,36 @@ object MathGenerator {
             val a = Random.nextInt(3, 15)
             val b = Random.nextInt(3, 9)
             val n = if (difficulty == Difficulty.NORMAL) Random.nextInt(8, 15) else Random.nextInt(15, 25)
-            MathProblem(MathTopic.SEQUENCE, "Barisan aritmatika a = $a dan b = $b.\\nTentukan suku ke-$n (U$n)!", a + (n - 1) * b, "Un = a + (n - 1)b")
+            MathProblem(
+                topic = MathTopic.SEQUENCE,
+                question = "Barisan aritmatika a = $a dan b = $b.\\nTentukan suku ke-$n (U$n)!",
+                correctAnswer = a + (n - 1) * b,
+                hint = "Gunakan rumus suku ke-n aritmatika: Un = a + (n - 1)b",
+                tutorSteps = listOf(
+                    "Diketahui suku pertama a = $a, beda b = $b, dan n = $n.",
+                    "Tuliskan rumus suku ke-n barisan aritmatika: Un = a + (n - 1) · b.",
+                    "Substitusikan angka: U$n = $a + ($n - 1) · $b.",
+                    "Hitung dalam kurung terlebih dahulu: ($n - 1) = ${n - 1}, lalu kalikan dengan $b.",
+                    "Tambahkan hasilnya dengan suku pertama ($a)!"
+                )
+            )
         } else {
             val a = Random.nextInt(2, 6)
             val r = listOf(2, 3).random()
             val n = Random.nextInt(4, 6)
-            MathProblem(MathTopic.SEQUENCE, "Barisan geometri a = $a dan r = $r.\\nTentukan suku ke-$n (U$n)!", a * r.toDouble().pow(n - 1).toInt(), "Un = a · r^(n - 1)")
+            MathProblem(
+                topic = MathTopic.SEQUENCE,
+                question = "Barisan geometri a = $a dan r = $r.\\nTentukan suku ke-$n (U$n)!",
+                correctAnswer = a * r.toDouble().pow(n - 1).toInt(),
+                hint = "Gunakan rumus suku ke-n geometri: Un = a · rⁿ⁻¹",
+                tutorSteps = listOf(
+                    "Diketahui suku pertama a = $a, rasio r = $r, dan n = $n.",
+                    "Gunakan rumus suku ke-n barisan geometri: Un = a · r^(n - 1).",
+                    "Substitusikan: U$n = $a · $r^($n - 1) = $a · $r^${n - 1}.",
+                    "Hitung nilai perpangkatan $r^${n - 1} terlebih dahulu.",
+                    "Kalikan hasil pangkat tersebut dengan $a!"
+                )
+            )
         }
     }
 
@@ -368,15 +512,59 @@ object MathGenerator {
             val b = Random.nextInt(1, 7)
             val c = Random.nextInt(1, 7)
             val d = Random.nextInt(2, 9)
-            MathProblem(MathTopic.TRIG_MATRIX, "Matriks A = [ [$a, $b], [$c, $d] ].\\nTentukan det(A)!", (a * d) - (b * c), "det(A) = ad - bc")
+            MathProblem(
+                topic = MathTopic.TRIG_MATRIX,
+                question = "Matriks A = [ [$a, $b], [$c, $d] ].\\nTentukan det(A)!",
+                correctAnswer = (a * d) - (b * c),
+                hint = "Determinan matriks 2x2 = (a · d) - (b · c)",
+                tutorSteps = listOf(
+                    "Untuk matriks 2x2 berbentuk [ [a, b], [c, d] ]:",
+                    "Diagonal utama adalah a = $a dan d = $d. Kalikan keduanya: $a × $d = ${a * d}.",
+                    "Diagonal samping adalah b = $b dan c = $c. Kalikan keduanya: $b × $c = ${b * c}.",
+                    "Kurangkan hasil diagonal utama dengan diagonal samping: (${a * d}) - (${b * c})!"
+                )
+            )
         } else {
             val variants = listOf(
-                Triple("Hitung: 4·sin(30°) + 6·cos(60°)!", 5, "sin(30°)=1/2, cos(60°)=1/2"),
-                Triple("Hitung: 3·tan(45°) + 2·sin(90°)!", 5, "tan(45°)=1, sin(90°)=1"),
-                Triple("Hitung: 8·cos(60°) + 5·tan(45°) - cos(0°)!", 8, "cos(60°)=1/2, tan(45°)=1, cos(0°)=1")
+                Triple(
+                    "Hitung: 4·sin(30°) + 6·cos(60°)!",
+                    5,
+                    listOf(
+                        "Ingat tabel sudut istimewa trigonometri:",
+                        "Nilai sin(30°) = 1/2, dan cos(60°) = 1/2.",
+                        "Substitusikan ke soal: 4 × (1/2) + 6 × (1/2).",
+                        "Hitung masing-masing perkalian (2 + 3) dan jumlahkan!"
+                    )
+                ),
+                Triple(
+                    "Hitung: 3·tan(45°) + 2·sin(90°)!",
+                    5,
+                    listOf(
+                        "Ingat nilai sudut istimewa trigonometri:",
+                        "Nilai tan(45°) = 1, dan sin(90°) = 1.",
+                        "Substitusikan ke persamaan: 3 × (1) + 2 × (1).",
+                        "Jumlahkan kedua hasilnya!"
+                    )
+                ),
+                Triple(
+                    "Hitung: 8·cos(60°) + 5·tan(45°) - cos(0°)!",
+                    8,
+                    listOf(
+                        "Ingat nilai sudut istimewa trigonometri:",
+                        "cos(60°) = 1/2, tan(45°) = 1, dan cos(0°) = 1.",
+                        "Substitusikan: 8 × (1/2) + 5 × (1) - 1.",
+                        "Sederhanakan menjadi: 4 + 5 - 1, lalu hitung hasilnya!"
+                    )
+                )
             )
             val chosen = variants.random()
-            MathProblem(MathTopic.TRIG_MATRIX, chosen.first, chosen.second, chosen.third)
+            MathProblem(
+                topic = MathTopic.TRIG_MATRIX,
+                question = chosen.first,
+                correctAnswer = chosen.second,
+                hint = "Gunakan nilai sudut istimewa 0°, 30°, 45°, 60°, 90°",
+                tutorSteps = chosen.third
+            )
         }
     }
 }
@@ -472,9 +660,7 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
-import android.media.Ringtone
 import android.media.RingtoneManager
-import android.media.ToneGenerator
 import android.os.*
 import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
@@ -483,8 +669,6 @@ import java.util.Locale
 
 class AlarmService : Service(), TextToSpeech.OnInitListener {
     private var mediaPlayer: MediaPlayer? = null
-    private var ringtone: Ringtone? = null
-    private var toneGenerator: ToneGenerator? = null
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
     private lateinit var audioManager: AudioManager
@@ -494,19 +678,22 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
     companion object {
         const val CHANNEL_ID = "IRON_WAKE_ALARM_CHANNEL"
         const val NOTIFICATION_ID = 999
+        const val ACTION_PAUSE_FOR_STUDY = "com.example.ironwake.ACTION_PAUSE_FOR_STUDY"
+        const val ACTION_RESUME_ALARM = "com.example.ironwake.ACTION_RESUME_ALARM"
         const val ACTION_CELEBRATE = "com.example.ironwake.ACTION_CELEBRATE"
+
         var isAlarmRinging = false
+        var isPausedForStudy = false
         var isTestMode = false
         var isCelebrating = false
     }
 
     private val enforcementRunnable = object : Runnable {
         override fun run() {
-            if (!isAlarmRinging || isCelebrating) return
+            if (!isAlarmRinging || isPausedForStudy || isCelebrating) return
             forceMaxAlarmVolume()
-            runCatching { toneGenerator?.startTone(ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK, 450) }
-            if (mediaPlayer == null && isTtsReady) speakMotivation()
-            handler.postDelayed(this, 3200L)
+            if (isTtsReady) speakMotivation()
+            handler.postDelayed(this, 4200L)
         }
     }
 
@@ -514,7 +701,6 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
         super.onCreate()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        runCatching { toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 95) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL_ID, "IronWake Alarm", NotificationManager.IMPORTANCE_HIGH).apply {
                 setBypassDnd(true)
@@ -524,20 +710,25 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_CELEBRATE) {
-            triggerCelebrationAudio()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_PAUSE_FOR_STUDY -> {
+                pauseAudioForStudy()
+                return START_STICKY
+            }
+            ACTION_RESUME_ALARM -> {
+                resumeAlarmAudio()
+                return START_STICKY
+            }
+            ACTION_CELEBRATE -> {
+                triggerCelebrationAudio()
+                return START_NOT_STICKY
+            }
         }
 
         isTestMode = intent?.getBooleanExtra("IS_TEST_MODE", false) ?: false
         isAlarmRinging = true
+        isPausedForStudy = false
         isCelebrating = false
-        forceMaxAlarmVolume()
-
-        val pattern = longArrayOf(0, 600, 300, 600)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
-        }
 
         val fullScreenIntent = Intent(this, AlarmRingingActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -560,75 +751,78 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
         startForeground(NOTIFICATION_ID, notification)
         startActivity(fullScreenIntent)
 
-        // 1. Putar Ringtone Alarm Sistem sebagai lapisan suara dasar
-        runCatching {
-            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-            ringtone = RingtoneManager.getRingtone(this, alarmUri)?.apply {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    isLooping = true
-                    volume = 0.65f
-                }
-                audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
-                play()
-            }
-        }
-
-        // 2. Putar Voice Over YouTube (wake_up_speech.mp3)
-        val rawResId = resources.getIdentifier("wake_up_speech", "raw", packageName)
-        if (rawResId != 0) {
-            try {
-                mediaPlayer = MediaPlayer().apply {
-                    setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build())
-                    val afd = resources.openRawResourceFd(rawResId)
-                    setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                    afd.close()
-                    isLooping = true
-                    setVolume(1.0f, 1.0f)
-                    prepare()
-                    start()
-                }
-            } catch (e: Exception) {
-                tts = TextToSpeech(this, this)
-            }
-        } else {
-            tts = TextToSpeech(this, this)
-        }
-
-        // Siapkan TTS juga untuk pengumuman perayaan saat misi selesai
         if (tts == null) {
             tts = TextToSpeech(this, this)
         }
-
-        handler.post(enforcementRunnable)
+        startSignatureSoundAndVibration()
         return START_STICKY
+    }
+
+    private fun startSignatureSoundAndVibration() {
+        isPausedForStudy = false
+        forceMaxAlarmVolume()
+
+        val pattern = longArrayOf(0, 600, 300, 600)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+        }
+
+        // Putar audio sirine tinju khas IronWake (res/raw/wake_up_speech.wav)
+        if (mediaPlayer == null) {
+            val rawResId = resources.getIdentifier("wake_up_speech", "raw", packageName)
+            if (rawResId != 0) {
+                runCatching {
+                    mediaPlayer = MediaPlayer().apply {
+                        setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build())
+                        val afd = resources.openRawResourceFd(rawResId)
+                        setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                        afd.close()
+                        isLooping = true
+                        setVolume(0.75f, 0.75f)
+                        prepare()
+                        start()
+                    }
+                }
+            }
+        } else if (mediaPlayer?.isPlaying == false) {
+            runCatching { mediaPlayer?.start() }
+        }
+
+        handler.removeCallbacks(enforcementRunnable)
+        handler.post(enforcementRunnable)
+    }
+
+    private fun pauseAudioForStudy() {
+        isPausedForStudy = true
+        handler.removeCallbacks(enforcementRunnable)
+        runCatching {
+            if (mediaPlayer?.isPlaying == true) mediaPlayer?.pause()
+        }
+        runCatching { tts?.stop() }
+        vibrator?.cancel()
+    }
+
+    private fun resumeAlarmAudio() {
+        if (isCelebrating) return
+        isAlarmRinging = true
+        startSignatureSoundAndVibration()
     }
 
     private fun triggerCelebrationAudio() {
         isCelebrating = true
         isAlarmRinging = false
+        isPausedForStudy = false
         handler.removeCallbacks(enforcementRunnable)
 
-        // Matikan semua suara alarm & getaran seketika
         runCatching { mediaPlayer?.stop(); mediaPlayer?.release() }
         mediaPlayer = null
-        runCatching { ringtone?.stop() }
-        ringtone = null
         vibrator?.cancel()
 
-        // Mainkan nada perayaan / fanfare menang!
         runCatching {
             val notifUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
             RingtoneManager.getRingtone(this, notifUri)?.play()
         }
-        handler.postDelayed({
-            runCatching { toneGenerator?.startTone(ToneGenerator.TONE_PROP_ACK, 300) }
-        }, 250L)
-        handler.postDelayed({
-            runCatching { toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP2, 500) }
-        }, 600L)
 
-        // Suara pujian kemenangan ("SURPRISE! GREAT JOB!")
         if (isTtsReady) {
             tts?.setPitch(1.18f)
             tts?.setSpeechRate(1.05f)
@@ -652,10 +846,10 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             tts?.language = Locale.US
-            tts?.setPitch(0.85f)
-            tts?.setSpeechRate(1.1f)
+            tts?.setPitch(0.80f)
+            tts?.setSpeechRate(1.08f)
             isTtsReady = true
-            if (isAlarmRinging && mediaPlayer == null && !isCelebrating) {
+            if (isAlarmRinging && !isPausedForStudy && !isCelebrating) {
                 speakMotivation()
             }
         }
@@ -670,12 +864,11 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         isAlarmRinging = false
+        isPausedForStudy = false
         isCelebrating = false
         isTestMode = false
         handler.removeCallbacks(enforcementRunnable)
         runCatching { mediaPlayer?.stop(); mediaPlayer?.release() }
-        runCatching { ringtone?.stop() }
-        runCatching { toneGenerator?.release() }
         runCatching { tts?.stop(); tts?.shutdown() }
         vibrator?.cancel()
         super.onDestroy()
@@ -745,8 +938,18 @@ class AlarmRingingActivity : ComponentActivity() {
                     enabledTopics = enabledTopics,
                     difficulty = difficulty,
                     isTestMode = isTestMode,
-                    onExitTestMode = {
-                        exitAlarmCompletely()
+                    onExitTestMode = { exitAlarmCompletely() },
+                    onEnterStudyMode = {
+                        val intent = Intent(this, AlarmService::class.java).apply {
+                            action = AlarmService.ACTION_PAUSE_FOR_STUDY
+                        }
+                        startService(intent)
+                    },
+                    onTimeoutBackToAlarm = {
+                        val intent = Intent(this, AlarmService::class.java).apply {
+                            action = AlarmService.ACTION_RESUME_ALARM
+                        }
+                        startService(intent)
                     },
                     onAllMissionsCompleted = {
                         missionCompleted = true
@@ -755,9 +958,7 @@ class AlarmRingingActivity : ComponentActivity() {
                         }
                         startService(celebrateIntent)
                     },
-                    onFinishCelebration = {
-                        exitAlarmCompletely()
-                    }
+                    onFinishCelebration = { exitAlarmCompletely() }
                 )
             }
         }
@@ -784,12 +985,12 @@ class AlarmRingingActivity : ComponentActivity() {
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -810,6 +1011,7 @@ import com.example.ironwake.model.Difficulty
 import com.example.ironwake.model.MathTopic
 import com.example.ironwake.ui.theme.*
 import com.example.ironwake.util.MathGenerator
+import kotlinx.coroutines.delay
 import kotlin.random.Random
 
 @Composable
@@ -819,6 +1021,8 @@ fun RingingScreen(
     difficulty: Difficulty,
     isTestMode: Boolean,
     onExitTestMode: () -> Unit,
+    onEnterStudyMode: () -> Unit,
+    onTimeoutBackToAlarm: () -> Unit,
     onAllMissionsCompleted: () -> Unit,
     onFinishCelebration: () -> Unit
 ) {
@@ -826,7 +1030,35 @@ fun RingingScreen(
     var currentProblem by remember { mutableStateOf(MathGenerator.generateProblem(enabledTopics, difficulty)) }
     var userAnswer by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Status fase: false = Layar Alarm Berbunyi, true = Layar Fokus Pengerjaan Soal
+    var isStudying by remember { mutableStateOf(false) }
+    var hasTimedOutBefore by remember { mutableStateOf(false) }
+    var timeLeft by remember { mutableIntStateOf(difficulty.durationSeconds) }
+    var showTutorDialog by remember { mutableStateOf(false) }
     var isCelebrating by remember { mutableStateOf(false) }
+
+    // Hitung mundur timer saat berada di mode pengerjaan soal
+    LaunchedEffect(isStudying, currentStep, isCelebrating) {
+        if (isStudying && !isCelebrating) {
+            timeLeft = difficulty.durationSeconds
+            while (timeLeft > 0) {
+                delay(1000L)
+                timeLeft--
+            }
+            // Waktu pengerjaan habis -> kembali ke layar alarm & nyalakan suara alarm lagi
+            showTutorDialog = false
+            isStudying = false
+            hasTimedOutBefore = true
+            onTimeoutBackToAlarm()
+        }
+    }
+
+    fun startOrResumeStudy() {
+        errorMessage = null
+        isStudying = true
+        onEnterStudyMode()
+    }
 
     fun verifyAnswer() {
         val parsed = userAnswer.trim().toIntOrNull()
@@ -837,15 +1069,17 @@ fun RingingScreen(
         if (parsed == currentProblem.correctAnswer) {
             errorMessage = null
             userAnswer = ""
+            showTutorDialog = false
             if (currentStep >= 5) {
                 isCelebrating = true
                 onAllMissionsCompleted()
             } else {
                 currentStep++
                 currentProblem = MathGenerator.generateProblem(enabledTopics, difficulty)
+                timeLeft = difficulty.durationSeconds
             }
         } else {
-            errorMessage = "SALAH! Coba hitung lagi!"
+            errorMessage = "SALAH! Coba hitung lagi atau tanya pengajar!"
             userAnswer = ""
         }
     }
@@ -862,230 +1096,449 @@ fun RingingScreen(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        if (isCelebrating) listOf(Color(0xD90A1F12), Color(0xCC0D0D0D), Color(0xE60A1F12))
-                        else listOf(Color.Black.copy(0.78f), Color.Black.copy(0.55f), Color.Black.copy(0.88f))
+                        when {
+                            isCelebrating -> listOf(Color(0xD90A1F12), Color(0xCC0D0D0D), Color(0xE60A1F12))
+                            isStudying -> listOf(Color(0xEB0B1220), Color(0xE0101828), Color(0xF2090D16))
+                            else -> listOf(Color.Black.copy(0.78f), Color.Black.copy(0.55f), Color.Black.copy(0.88f))
+                        }
                     )
                 )
         )
 
-        if (isCelebrating) {
-            // Efek konfeti emas & hijau di latar perayaan
-            val confettiPoints = remember {
-                List(45) {
-                    Triple(
-                        Random.nextFloat(),
-                        Random.nextFloat(),
-                        listOf(IronGold, IronEmerald, Color.White, IronRed).random()
-                    )
+        when {
+            // ================= FASE 3: PERAYAAN KEMENANGAN =================
+            isCelebrating -> {
+                val confettiPoints = remember {
+                    List(45) {
+                        Triple(
+                            Random.nextFloat(),
+                            Random.nextFloat(),
+                            listOf(IronGold, IronEmerald, Color.White, IronRed).random()
+                        )
+                    }
                 }
-            }
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                confettiPoints.forEach { (rx, ry, col) ->
-                    drawCircle(
-                        color = col.copy(alpha = 0.75f),
-                        radius = 10f,
-                        center = Offset(rx * size.width, ry * size.height)
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    confettiPoints.forEach { (rx, ry, col) ->
+                        drawCircle(
+                            color = col.copy(alpha = 0.75f),
+                            radius = 10f,
+                            center = Offset(rx * size.width, ry * size.height)
+                        )
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.EmojiEvents,
+                        contentDescription = null,
+                        tint = IronGold,
+                        modifier = Modifier.size(96.dp)
                     )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = "SURPRISE! YOU DID IT!",
+                        color = IronGold,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "GREAT JOB, CHAMPION!",
+                        color = IronEmerald,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text = "Semua 5 soal matematika SMA berhasil ditaklukkan bersama pendamping belajarmu!",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 22.sp
+                    )
+                    Spacer(Modifier.height(32.dp))
+                    Button(
+                        onClick = onFinishCelebration,
+                        colors = ButtonDefaults.buttonColors(containerColor = IronEmerald),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                    ) {
+                        Text(
+                            text = "SELESAI & KEMBALI KE BERANDA",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 16.sp
+                        )
+                    }
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.EmojiEvents,
-                    contentDescription = null,
-                    tint = IronGold,
-                    modifier = Modifier.size(96.dp)
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = "SURPRISE! YOU DID IT!",
-                    color = IronGold,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = "GREAT JOB, CHAMPION!",
-                    color = IronEmerald,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    text = "Semua 5 soal matematika SMA berhasil ditaklukkan. Otakmu sudah 100% aktif dan siap menjalani hari!",
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 22.sp
-                )
-                Spacer(Modifier.height(32.dp))
-                Button(
-                    onClick = onFinishCelebration,
-                    colors = ButtonDefaults.buttonColors(containerColor = IronEmerald),
-                    shape = RoundedCornerShape(14.dp),
+            // ================= FASE 2: RUANG FOKUS PENGERJAAN SOAL =================
+            isStudying -> {
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
+                        .fillMaxSize()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = "SELESAI & KEMBALI KE BERANDA",
-                        color = Color.Black,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 16.sp
-                    )
-                }
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    if (isTestMode) {
+                    // Header: Progress & Timer Hitung Mundur
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            FilledTonalButton(
-                                onClick = onExitTestMode,
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = IronGold,
-                                    contentColor = Color.Black
-                                ),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                            Surface(
+                                color = IronCyan.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier.border(1.dp, IronCyan, RoundedCornerShape(50))
                             ) {
-                                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("KELUAR UJI COBA", fontWeight = FontWeight.Black, fontSize = 12.sp)
+                                Text(
+                                    text = "SOAL $currentStep / 5",
+                                    color = IronCyan,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                )
+                            }
+
+                            // Indikator Sisa Waktu Pengerjaan
+                            val timerColor = if (timeLeft <= 15) IronCrimson else IronGold
+                            Surface(
+                                color = timerColor.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier.border(1.5.dp, timerColor, RoundedCornerShape(50))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Default.Timer, contentDescription = null, tint = timerColor, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = "${timeLeft}s",
+                                        color = timerColor,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 15.sp
+                                    )
+                                }
+                            }
+
+                            if (isTestMode) {
+                                IconButton(onClick = onExitTestMode) {
+                                    Icon(Icons.Default.Close, contentDescription = "Keluar Uji Coba", tint = IronGold)
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { timeLeft.toFloat() / difficulty.durationSeconds.toFloat() },
+                            color = if (timeLeft <= 15) IronCrimson else IronCyan,
+                            trackColor = Color.White.copy(alpha = 0.15f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                        )
+                    }
+
+                    // Kartu Soal & Tombol Ikon Pengajar
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xF0131B2E)),
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.5.dp, IronCyan, RoundedCornerShape(18.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = currentProblem.topic.displayName.uppercase(),
+                                    color = IronGold,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                // Tombol Ikon Pengajar / Pendamping Belajar
+                                FilledTonalButton(
+                                    onClick = { showTutorDialog = true },
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = IronCyan,
+                                        contentColor = Color.Black
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(50)
+                                ) {
+                                    Icon(Icons.Default.School, contentDescription = "Pengajar", modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Tanya Pengajar", fontWeight = FontWeight.Black, fontSize = 12.sp)
+                                }
+                            }
+
+                            Spacer(Modifier.height(14.dp))
+                            Text(
+                                text = currentProblem.question,
+                                color = Color.White,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 28.sp
+                            )
+                            Spacer(Modifier.height(16.dp))
+
+                            OutlinedTextField(
+                                value = userAnswer,
+                                onValueChange = { userAnswer = it },
+                                label = { Text("Jawaban (Angka Bulat)") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(onDone = { verifyAnswer() }),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = IronCyan,
+                                    unfocusedBorderColor = IronGold,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedLabelColor = IronCyan
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            if (errorMessage != null) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = errorMessage!!,
+                                    color = IronCrimson,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+                            Button(
+                                onClick = { verifyAnswer() },
+                                colors = ButtonDefaults.buttonColors(containerColor = IronEmerald),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                            ) {
+                                Text(
+                                    text = if (currentStep < 5) "KIRIM JAWABAN ($currentStep/5)" else "SELESAIKAN MISI!",
+                                    color = Color.Black,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 16.sp
+                                )
                             }
                         }
                     }
 
-                    Spacer(Modifier.height(8.dp))
                     Text(
-                        text = motivationText.uppercase(),
-                        color = IronGold,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Black,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 34.sp
+                        text = "Suara alarm dijeda selama pengerjaan. Selesaikan sebelum waktu habis!",
+                        color = IronCyan.copy(alpha = 0.85f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Surface(
-                        color = IronRed,
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier.border(1.5.dp, IronGold, RoundedCornerShape(50))
-                    ) {
-                        Text(
-                            text = "MISI DISIPLIN: $currentStep / 5",
-                            color = Color.White,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 15.sp,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
-                        )
-                    }
                 }
+            }
 
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xE6141418)),
-                    shape = RoundedCornerShape(16.dp),
+            // ================= FASE 1: TAMPILAN ALARM BERBUNYI =================
+            else -> {
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .border(2.dp, IronRed, RoundedCornerShape(16.dp))
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        if (isTestMode) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                FilledTonalButton(
+                                    onClick = onExitTestMode,
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = IronGold,
+                                        contentColor = Color.Black
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("KELUAR UJI COBA", fontWeight = FontWeight.Black, fontSize = 12.sp)
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+                        Surface(
+                            color = IronRed,
+                            shape = CircleShape,
+                            modifier = Modifier
+                                .size(84.dp)
+                                .border(2.dp, IronGold, CircleShape)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = IronGold, modifier = Modifier.size(44.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(20.dp))
                         Text(
-                            text = currentProblem.topic.displayName.uppercase(),
+                            text = motivationText.uppercase(),
                             color = IronGold,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Black,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 38.sp
                         )
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = currentProblem.question,
+                            text = if (hasTimedOutBefore)
+                                "WAKTU PENGERJAAN HABIS! Alarm berbunyi kembali.\nTekan tombol di bawah untuk melanjutkan soal ke-$currentStep."
+                            else
+                                "Alarm aktif! Masuk ke ruang belajar untuk menjeda suara alarm dan menyelesaikan 5 soal matematika.",
                             color = Color.White,
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
                             textAlign = TextAlign.Center,
-                            lineHeight = 26.sp
+                            lineHeight = 22.sp
                         )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "Petunjuk: ${currentProblem.hint}",
-                            color = Color.LightGray,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        OutlinedTextField(
-                            value = userAnswer,
-                            onValueChange = { userAnswer = it },
-                            label = { Text("Jawaban (Angka Bulat)") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(onDone = { verifyAnswer() }),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = IronGold,
-                                unfocusedBorderColor = IronRed,
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedLabelColor = IronGold
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        if (errorMessage != null) {
-                            Spacer(Modifier.height(8.dp))
+                    }
+
+                    // Tombol Utama: Mulai / Lanjutkan Soal
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            color = IronSurface.copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.border(1.dp, IronGold, RoundedCornerShape(12.dp))
+                        ) {
                             Text(
-                                text = errorMessage!!,
-                                color = IronCrimson,
+                                text = "Progres: Soal $currentStep dari 5 • Durasi ${difficulty.durationSeconds} detik/soal",
+                                color = IronGold,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                             )
                         }
                         Spacer(Modifier.height(16.dp))
                         Button(
-                            onClick = { verifyAnswer() },
+                            onClick = { startOrResumeStudy() },
                             colors = ButtonDefaults.buttonColors(containerColor = IronRed),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(16.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(52.dp)
+                                .height(64.dp)
+                                .border(2.dp, IronGold, RoundedCornerShape(16.dp))
                         ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = IronGold, modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.width(8.dp))
                             Text(
-                                text = if (currentStep < 5) "KUNCI JAWABAN ($currentStep/5)" else "MATIKAN ALARM SEKARANG!",
+                                text = if (hasTimedOutBefore) "LANJUTKAN SOAL ($currentStep/5)" else "MULAI KERJAKAN SOAL",
                                 color = Color.White,
                                 fontWeight = FontWeight.Black,
-                                fontSize = 16.sp
+                                fontSize = 18.sp
                             )
                         }
                     }
-                }
 
-                Text(
-                    text = if (isTestMode) "MODE UJI COBA: Ketuk tombol kuning di kanan atas untuk keluar." else "NO MUTE. NO SNOOZE. SELESAIKAN 5 SOAL.",
-                    color = Color.White.copy(0.75f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
+                    Text(
+                        text = "IRONWAKE DISCIPLINE SYSTEM",
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
+        }
+
+        // ================= DIALOG PENDAMPING BELAJAR (PENGAJAR) =================
+        if (showTutorDialog) {
+            AlertDialog(
+                onDismissRequest = { showTutorDialog = false },
+                containerColor = Color(0xFF141E30),
+                icon = {
+                    Icon(Icons.Default.School, contentDescription = null, tint = IronCyan, modifier = Modifier.size(36.dp))
+                },
+                title = {
+                    Text(
+                        text = "Langkah Pengerjaan Pengajar",
+                        color = IronCyan,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 18.sp
+                    )
+                },
+                text = {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        Text(
+                            text = "Ikuti tahapan berikut untuk menemukan jawabannya:",
+                            color = IronGold,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        currentProblem.tutorSteps.forEachIndexed { index, stepText ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Surface(
+                                    color = IronCyan,
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(22.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "${index + 1}",
+                                            color = Color.Black,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    text = stepText,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showTutorDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = IronCyan)
+                    ) {
+                        Text("PAHAM, LANJUT HITUNG", color = Color.Black, fontWeight = FontWeight.Black)
+                    }
+                }
+            )
         }
     }
 }
@@ -1208,7 +1661,7 @@ fun HomeScreen() {
         ) {
             Icon(Icons.Default.Tune, null, tint = Color.Black)
             Spacer(Modifier.width(8.dp))
-            Text("MODIFIKASI MISI", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 16.sp)
+            Text("MODIFIKASI MISI & DURASI", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 16.sp)
         }
 
         Spacer(Modifier.height(12.dp))
@@ -1236,15 +1689,21 @@ fun HomeScreen() {
         AlertDialog(
             onDismissRequest = { showMissionDialog = false },
             containerColor = IronSurface,
-            title = { Text("MODIFIKASI MISI DISIPLIN", color = IronGold, fontWeight = FontWeight.Black) },
+            title = { Text("MODIFIKASI MISI & DURASI", color = IronGold, fontWeight = FontWeight.Black) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     Text("Teks Teriakan Alarm:", color = Color.White, fontWeight = FontWeight.Bold)
                     OutlinedTextField(value = motivationText, onValueChange = { motivationText = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(12.dp))
-                    Text("Tingkat Kesulitan:", color = Color.White, fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Difficulty.entries.forEach { diff -> FilterChip(selected = difficulty == diff, onClick = { difficulty = diff }, label = { Text(diff.label) }) }
+                    Text("Tingkat Kesulitan & Durasi Soal:", color = Color.White, fontWeight = FontWeight.Bold)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Difficulty.entries.forEach { diff ->
+                            FilterChip(
+                                selected = difficulty == diff,
+                                onClick = { difficulty = diff },
+                                label = { Text(diff.label) }
+                            )
+                        }
                     }
                     Spacer(Modifier.height(12.dp))
                     Text("Pilih Materi SMA:", color = Color.White, fontWeight = FontWeight.Bold)
@@ -1343,4 +1802,4 @@ for path, content in files.items():
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
-print("Semua file proyek IronWake v2.0 berhasil dibuat!")
+print("Semua file proyek IronWake v5.0 (Tutor Mode + Audio Khas) berhasil dibuat!")
