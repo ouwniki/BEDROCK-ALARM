@@ -89,8 +89,8 @@ android {
         applicationId = "com.example.ironwake"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "5.1-NopjekDLC"
+        versionCode = 7
+        versionName = "6.0-CustomMission"
     }
 
     buildFeatures {
@@ -304,7 +304,12 @@ fun IronWakeTheme(content: @Composable () -> Unit) {
 
     "app/src/main/java/com/example/ironwake/model/MathProblem.kt": r"""package com.example.ironwake.model
 
+import android.content.SharedPreferences
+import org.json.JSONArray
+import org.json.JSONObject
+
 enum class MathTopic(val displayName: String) {
+    CUSTOM_USER("Soal Buatan Sendiri (Kustom)"),
     NOPJEK_DLC("Nopjek DLC (Kedokteran Gigi Umum)"),
     QUADRATIC("Persamaan Kuadrat & Akar"),
     LOG_EXP("Logaritma & Eksponen"),
@@ -318,6 +323,13 @@ enum class Difficulty(val label: String, val durationSeconds: Int) {
     HARD("Intensif (60 dtk)", 60)
 }
 
+data class CustomQuestionItem(
+    val id: Long,
+    val question: String,
+    val answer: Int,
+    val tutorSteps: List<String>
+)
+
 data class MathProblem(
     val topic: MathTopic,
     val question: String,
@@ -325,10 +337,56 @@ data class MathProblem(
     val hint: String,
     val tutorSteps: List<String>
 )
+
+object CustomMissionStorage {
+    private const val KEY_CUSTOM_LIST = "custom_questions_json"
+
+    fun loadCustomQuestions(prefs: SharedPreferences): List<CustomQuestionItem> {
+        val raw = prefs.getString(KEY_CUSTOM_LIST, "[]") ?: "[]"
+        val result = mutableListOf<CustomQuestionItem>()
+        runCatching {
+            val arr = JSONArray(raw)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val stepsArr = obj.optJSONArray("steps") ?: JSONArray()
+                val steps = mutableListOf<String>()
+                for (j in 0 until stepsArr.length()) {
+                    steps.add(stepsArr.getString(j))
+                }
+                result.add(
+                    CustomQuestionItem(
+                        id = obj.optLong("id", System.currentTimeMillis() + i),
+                        question = obj.getString("question"),
+                        answer = obj.getInt("answer"),
+                        tutorSteps = if (steps.isEmpty()) listOf("Periksa kembali soal dan masukkan jawaban angka bulat.") else steps
+                    )
+                )
+            }
+        }
+        return result
+    }
+
+    fun saveCustomQuestions(prefs: SharedPreferences, list: List<CustomQuestionItem>) {
+        val arr = JSONArray()
+        list.forEach { item ->
+            val obj = JSONObject().apply {
+                put("id", item.id)
+                put("question", item.question)
+                put("answer", item.answer)
+                val stepsArr = JSONArray()
+                item.tutorSteps.forEach { stepsArr.put(it) }
+                put("steps", stepsArr)
+            }
+            arr.put(obj)
+        }
+        prefs.edit().putString(KEY_CUSTOM_LIST, arr.toString()).apply()
+    }
+}
 """,
 
     "app/src/main/java/com/example/ironwake/util/MathGenerator.kt": r"""package com.example.ironwake.util
 
+import com.example.ironwake.model.CustomQuestionItem
 import com.example.ironwake.model.Difficulty
 import com.example.ironwake.model.MathProblem
 import com.example.ironwake.model.MathTopic
@@ -336,21 +394,45 @@ import kotlin.math.pow
 import kotlin.random.Random
 
 object MathGenerator {
-    fun generateProblem(enabledTopics: Set<MathTopic>, difficulty: Difficulty): MathProblem {
-        val pool = if (enabledTopics.isEmpty()) MathTopic.entries else enabledTopics.toList()
+    fun generateProblem(
+        enabledTopics: Set<MathTopic>,
+        difficulty: Difficulty,
+        customQuestions: List<CustomQuestionItem> = emptyList()
+    ): MathProblem {
+        val validTopics = enabledTopics.filter { topic ->
+            if (topic == MathTopic.CUSTOM_USER) customQuestions.isNotEmpty() else true
+        }
+        val fallbackTopics = listOf(
+            MathTopic.QUADRATIC,
+            MathTopic.LOG_EXP,
+            MathTopic.CALCULUS,
+            MathTopic.SEQUENCE,
+            MathTopic.TRIG_MATRIX
+        )
+        val pool = if (validTopics.isEmpty()) fallbackTopics else validTopics
+
         return when (pool.random()) {
-            MathTopic.NOPJEK_DLC -> generateNopjekDental(difficulty)
+            MathTopic.CUSTOM_USER -> {
+                val chosen = customQuestions.random()
+                MathProblem(
+                    topic = MathTopic.CUSTOM_USER,
+                    question = chosen.question,
+                    correctAnswer = chosen.answer,
+                    hint = chosen.tutorSteps.firstOrNull() ?: "Gunakan klu pengajar!",
+                    tutorSteps = chosen.tutorSteps
+                )
+            }
+            MathTopic.NOPJEK_DLC -> generateNopjekDental()
             MathTopic.QUADRATIC -> generateQuadratic(difficulty)
-            MathTopic.LOG_EXP -> generateLogExp(difficulty)
+            MathTopic.LOG_EXP -> generateLogExp()
             MathTopic.CALCULUS -> generateCalculus(difficulty)
             MathTopic.SEQUENCE -> generateSequence(difficulty)
-            MathTopic.TRIG_MATRIX -> generateTrigOrMatrix(difficulty)
+            MathTopic.TRIG_MATRIX -> generateTrigOrMatrix()
         }
     }
 
-    private fun generateNopjekDental(difficulty: Difficulty): MathProblem {
+    private fun generateNopjekDental(): MathProblem {
         val dentalBank = listOf(
-            // 1. Nomenklatur FDI
             MathProblem(
                 topic = MathTopic.NOPJEK_DLC,
                 question = "[NOPJEK DLC - ANATOMI GIGI]\nDalam sistem penomoran FDI, gigi Molar Pertama Permanen Kanan Bawah memiliki kode nomor berapa?",
@@ -359,7 +441,7 @@ object MathGenerator {
                 tutorSteps = listOf(
                     "Sistem FDI terdiri dari 2 digit: digit pertama = kuadran, digit kedua = urutan gigi dari garis tengah (median).",
                     "Kuadran gigi permanen: 1 (kanan atas), 2 (kiri atas), 3 (kiri bawah), 4 (kanan bawah).",
-                    "Urutan gigi dari median: 1 (insisivus sentral), 2 (insisivus lateral), 3 (kaninus), 4 (premolar 1), 5 (premolar 2), 6 (molar 1).",
+                    "Urutan gigi dari median: 1 (I1), 2 (I2), 3 (C), 4 (P1), 5 (P2), 6 (M1).",
                     "Gabungkan kuadran kanan bawah (4) dan urutan molar pertama (6)!"
                 )
             ),
@@ -380,18 +462,16 @@ object MathGenerator {
                 correctAnswer = 75,
                 hint = "Kuadran gigi sulung: 5, 6, 7 (kiri bawah), 8; molar kedua = urutan ke-5",
                 tutorSteps = listOf(
-                    "Kuadran gigi sulung dimulai dari angka 5 sampai 8 searah jarum jam:",
-                    "5 = kanan atas, 6 = kiri atas, 7 = kiri bawah, 8 = kanan bawah.",
-                    "Urutan gigi sulung per kuadran hanya ada 5 gigi (1–5), di mana nomor 5 adalah Molar Kedua Sulung.",
+                    "Kuadran gigi sulung dimulai dari angka 5 sampai 8 searah jarum jam: 5 (kanan atas), 6 (kiri atas), 7 (kiri bawah), 8 (kanan bawah).",
+                    "Urutan gigi sulung per kuadran ada 5 gigi (1–5), di mana nomor 5 adalah Molar Kedua Sulung.",
                     "Gabungkan kuadran kiri bawah sulung (7) dengan urutan ke-5!"
                 )
             ),
-            // 2. Jumlah Gigi & Morfologi
             MathProblem(
                 topic = MathTopic.NOPJEK_DLC,
                 question = "[NOPJEK DLC - ODONTOLOGI]\nBerapa total jumlah seluruh gigi sulung (gigi susu) lengkap pada anak-anak?",
                 correctAnswer = 20,
-                hint = "Setiap kuadran memiliki 5 gigi (2 insisivus, 1 kaninus, 2 molar)",
+                hint = "Setiap kuadran memiliki 5 gigi × 4 kuadran",
                 tutorSteps = listOf(
                     "Pada periode gigi sulung, belum terdapat gigi premolar maupun molar ketiga.",
                     "Setiap kuadran terdiri dari: 2 insisivus + 1 kaninus + 2 molar = 5 gigi.",
@@ -404,43 +484,38 @@ object MathGenerator {
                 correctAnswer = 32,
                 hint = "Setiap kuadran memiliki 8 gigi × 4 kuadran",
                 tutorSteps = listOf(
-                    "Pada periode gigi permanen lengkap, setiap kuadran memiliki 8 gigi:",
-                    "2 insisivus + 1 kaninus + 2 premolar + 3 molar = 8 gigi per kuadran.",
+                    "Pada periode gigi permanen lengkap, setiap kuadran memiliki 8 gigi: 2 insisivus + 1 kaninus + 2 premolar + 3 molar.",
                     "Kalikan 8 gigi dengan 4 kuadran (kanan/kiri, atas/bawah)!"
                 )
             ),
-            // 3. Karies & Konservasi Gigi
             MathProblem(
                 topic = MathTopic.NOPJEK_DLC,
                 question = "[NOPJEK DLC - KONSERVASI]\nMenurut klasifikasi G.V. Black, karies yang mengenai permukaan proksimal (mesial/distal) gigi posterior termasuk Kelas berapa?",
                 correctAnswer = 2,
                 hint = "Kelas I = pit & fisura; Kelas II = proksimal posterior; Kelas III = proksimal anterior",
                 tutorSteps = listOf(
-                    "Ingat urutan klasifikasi karies G.V. Black:",
-                    "Kelas I: Pit dan fisura oklusal posterior / foramen caecum.",
+                    "Kelas I: Pit dan fisura oklusal posterior.",
                     "Kelas II: Permukaan proksimal (mesial/distal) gigi posterior (premolar dan molar).",
-                    "Kelas III: Permukaan proksimal gigi anterior tanpa melibatkan tepi insisal."
+                    "Kelas III: Permukaan proksimal gigi anterior tanpa melibatkan sudut insisal."
                 )
             ),
             MathProblem(
                 topic = MathTopic.NOPJEK_DLC,
-                question = "[NOPJEK DLC - KONSERVASI]\nKaries pada 1/3 servikal bagian fasial atau lingual semua gigi (baik anterior maupun posterior) menurut G.V. Black termasuk Kelas berapa?",
+                question = "[NOPJEK DLC - KONSERVASI]\nKaries pada 1/3 servikal bagian fasial atau lingual semua gigi menurut G.V. Black termasuk Kelas berapa?",
                 correctAnswer = 5,
                 hint = "Kelas IV = sudut insisal anterior; Kelas V = servikal gigi",
                 tutorSteps = listOf(
-                    "Ingat klasifikasi G.V. Black untuk lesi di dekat gusi (servikal):",
                     "Kelas IV melibatkan tepi/sudut insisal gigi anterior.",
                     "Kelas V berada pada 1/3 servikal (leher gigi) permukaan bukal/labial maupun lingual/palatal."
                 )
             ),
-            // 4. Farmakologi & Hitungan Klinis Dokter Gigi
             MathProblem(
                 topic = MathTopic.NOPJEK_DLC,
-                question = "[NOPJEK DLC - FARMAKOLOGI KLINIS]\nDosis maksimal Lidokain dengan vasokonstriktor adalah 7 mg/kgBB. Berapa mg dosis maksimal untuk pasien dengan berat 50 kg?",
+                question = "[NOPJEK DLC - FARMAKOLOGI KLINIS]\nDosis maksimal Lidokain dengan vasokonstriktor adalah 7 mg/kgBB. Berapa mg dosis maksimal untuk pasien berat 50 kg?",
                 correctAnswer = 350,
                 hint = "Dosis maksimal = 7 mg × berat badan pasien (kg)",
                 tutorSteps = listOf(
-                    "Diketahui dosis maksimal aman Lidokain (+ epinefrin) adalah 7 mg per kg berat badan.",
+                    "Dosis maksimal aman Lidokain (+ epinefrin) adalah 7 mg per kg berat badan.",
                     "Berat badan pasien adalah 50 kg.",
                     "Kalikan 7 mg/kg × 50 kg untuk memperoleh batas maksimal dalam miligram (mg)!"
                 )
@@ -456,14 +531,12 @@ object MathGenerator {
                     "Kalikan konsentrasi (20 mg/mL) dengan volume (1,8 mL)!"
                 )
             ),
-            // 5. IKGM (Indeks DMF-T)
             MathProblem(
                 topic = MathTopic.NOPJEK_DLC,
                 question = "[NOPJEK DLC - IKGM]\nHasil pemeriksaan odontogram pasien: 4 gigi karies (D), 2 gigi dicabut karena karies (M), dan 3 gigi ditambal baik (F). Berapa skor DMF-T pasien?",
                 correctAnswer = 9,
                 hint = "DMF-T = Decayed (D) + Missing (M) + Filled (F)",
                 tutorSteps = listOf(
-                    "Indeks DMF-T menghitung total pengalaman karies gigi permanen individu.",
                     "Rumus: DMF-T = D (Decayed/karies) + M (Missing/hilang) + F (Filled/tumpatan).",
                     "Jumlahkan seluruh komponen: 4 + 2 + 3!"
                 )
@@ -487,8 +560,7 @@ object MathGenerator {
                 correctAnswer = x1 + x2,
                 hint = "Gunakan rumus jumlah akar Vieta: x₁ + x₂ = -b / a",
                 tutorSteps = listOf(
-                    "Identifikasi koefisien persamaan kuadrat ax² + bx + c = 0:",
-                    "Didapat a = 1, b = $b, dan c = $c.",
+                    "Identifikasi koefisien persamaan kuadrat ax² + bx + c = 0: a = 1, b = $b, c = $c.",
                     "Gunakan rumus Vieta untuk jumlah akar: x₁ + x₂ = -b / a.",
                     "Substitusikan nilai: x₁ + x₂ = -($b) / 1.",
                     "Hitung hasil akhirnya dan masukkan ke kolom jawaban!"
@@ -511,7 +583,7 @@ object MathGenerator {
         }
     }
 
-    private fun generateLogExp(difficulty: Difficulty): MathProblem {
+    private fun generateLogExp(): MathProblem {
         return if (Random.nextBoolean()) {
             val base1 = listOf(2, 3, 5).random()
             val exp1 = Random.nextInt(2, 5)
@@ -526,8 +598,8 @@ object MathGenerator {
                 hint = "Ingat sifat dasar logaritma: ᵃlog(aⁿ) = n",
                 tutorSteps = listOf(
                     "Ubah angka di dalam logaritma menjadi bentuk pangkat dari basisnya:",
-                    "Suku pertama: $val1 = $base1 pangkat berapa? ($base1^$exp1 = $val1), sehingga ^${base1}log($val1) = $exp1.",
-                    "Suku kedua: $val2 = $base2 pangkat berapa? ($base2^$exp2 = $val2), sehingga ^${base2}log($val2) = $exp2.",
+                    "Suku pertama: $val1 = $base1^$exp1, sehingga ^${base1}log($val1) = $exp1.",
+                    "Suku kedua: $val2 = $base2^$exp2, sehingga ^${base2}log($val2) = $exp2.",
                     "Jumlahkan kedua hasil pangkat tersebut ($exp1 + $exp2)!"
                 )
             )
@@ -543,10 +615,9 @@ object MathGenerator {
                 correctAnswer = x,
                 hint = "Samakan basis pangkat di ruas kiri dan kanan (${base}^n)",
                 tutorSteps = listOf(
-                    "Ubah ruas kanan ($rhs) menjadi bilangan berpangkat dengan basis $base:",
-                    "Karena $base^$expRes = $rhs, maka persamaan menjadi: $base^(2x - $k) = $base^$expRes.",
-                    "Karena basis sudah sama, samakan pangkatnya: 2x - $k = $expRes.",
-                    "Pindahkan -$k ke ruas kanan: 2x = $expRes + $k = ${expRes + k}.",
+                    "Ubah ruas kanan ($rhs) menjadi bilangan berpangkat dengan basis $base: $base^$expRes = $rhs.",
+                    "Samakan pangkat kedua ruas: 2x - $k = $expRes.",
+                    "Pindahkan -$k ke ruas kanan: 2x = ${expRes + k}.",
                     "Bagi kedua ruas dengan 2 untuk mendapatkan nilai x!"
                 )
             )
@@ -566,8 +637,6 @@ object MathGenerator {
                 hint = "Turunan axⁿ adalah (a·n)xⁿ⁻¹",
                 tutorSteps = listOf(
                     "Turunkan setiap suku f(x) menggunakan aturan pangkat d/dx(xⁿ) = n·xⁿ⁻¹:",
-                    "Turunan ${a}x³ adalah ${3 * a}x².",
-                    "Turunan ${b}x² adalah ${2 * b}x, dan turunan ${c}x adalah $c.",
                     "Diperoleh f'(x) = ${3 * a}x² + ${2 * b}x + $c.",
                     "Substitusikan x = $k: ${3 * a}($k)² + ${2 * b}($k) + $c, lalu jumlahkan!"
                 )
@@ -582,10 +651,8 @@ object MathGenerator {
                 correctAnswer = (a * upper * upper * upper) + (c * upper * upper),
                 hint = "Integral axⁿ dx = [a/(n+1)]xⁿ⁺¹",
                 tutorSteps = listOf(
-                    "Cari anti-turunan (integral tak tentu) dari (${3 * a}x² + ${2 * c}x):",
-                    "∫ ${3 * a}x² dx = (${3 * a}/3)x³ = ${a}x³.",
-                    "∫ ${2 * c}x dx = (${2 * c}/2)x² = ${c}x².",
-                    "Masukkan batas atas x = $upper dan batas bawah x = 0 ke F(x) = ${a}x³ + ${c}x².",
+                    "Cari anti-turunan: F(x) = ${a}x³ + ${c}x².",
+                    "Masukkan batas atas x = $upper dan batas bawah x = 0.",
                     "Hitung F($upper) - F(0) = [${a}($upper)³ + ${c}($upper)²] - 0!"
                 )
             )
@@ -603,11 +670,9 @@ object MathGenerator {
                 correctAnswer = a + (n - 1) * b,
                 hint = "Gunakan rumus suku ke-n aritmatika: Un = a + (n - 1)b",
                 tutorSteps = listOf(
-                    "Diketahui suku pertama a = $a, beda b = $b, dan n = $n.",
-                    "Tuliskan rumus suku ke-n barisan aritmatika: Un = a + (n - 1) · b.",
+                    "Rumus suku ke-n barisan aritmatika: Un = a + (n - 1) · b.",
                     "Substitusikan angka: U$n = $a + ($n - 1) · $b.",
-                    "Hitung dalam kurung terlebih dahulu: ($n - 1) = ${n - 1}, lalu kalikan dengan $b.",
-                    "Tambahkan hasilnya dengan suku pertama ($a)!"
+                    "Hitung ($n - 1) = ${n - 1}, kalikan dengan $b, lalu tambahkan $a!"
                 )
             )
         } else {
@@ -620,17 +685,15 @@ object MathGenerator {
                 correctAnswer = a * r.toDouble().pow(n - 1).toInt(),
                 hint = "Gunakan rumus suku ke-n geometri: Un = a · rⁿ⁻¹",
                 tutorSteps = listOf(
-                    "Diketahui suku pertama a = $a, rasio r = $r, dan n = $n.",
-                    "Gunakan rumus suku ke-n barisan geometri: Un = a · r^(n - 1).",
-                    "Substitusikan: U$n = $a · $r^($n - 1) = $a · $r^${n - 1}.",
-                    "Hitung nilai perpangkatan $r^${n - 1} terlebih dahulu.",
-                    "Kalikan hasil pangkat tersebut dengan $a!"
+                    "Rumus suku ke-n barisan geometri: Un = a · r^(n - 1).",
+                    "Substitusikan: U$n = $a · $r^${n - 1}.",
+                    "Hitung $r^${n - 1} terlebih dahulu, lalu kalikan dengan $a!"
                 )
             )
         }
     }
 
-    private fun generateTrigOrMatrix(difficulty: Difficulty): MathProblem {
+    private fun generateTrigOrMatrix(): MathProblem {
         return if (Random.nextBoolean()) {
             val a = Random.nextInt(2, 9)
             val b = Random.nextInt(1, 7)
@@ -642,10 +705,9 @@ object MathGenerator {
                 correctAnswer = (a * d) - (b * c),
                 hint = "Determinan matriks 2x2 = (a · d) - (b · c)",
                 tutorSteps = listOf(
-                    "Untuk matriks 2x2 berbentuk [ [a, b], [c, d] ]:",
-                    "Diagonal utama adalah a = $a dan d = $d. Kalikan keduanya: $a × $d = ${a * d}.",
-                    "Diagonal samping adalah b = $b dan c = $c. Kalikan keduanya: $b × $c = ${b * c}.",
-                    "Kurangkan hasil diagonal utama dengan diagonal samping: (${a * d}) - (${b * c})!"
+                    "Diagonal utama: $a × $d = ${a * d}.",
+                    "Diagonal samping: $b × $c = ${b * c}.",
+                    "Kurangkan keduanya: (${a * d}) - (${b * c})!"
                 )
             )
         } else {
@@ -654,30 +716,24 @@ object MathGenerator {
                     "Hitung: 4·sin(30°) + 6·cos(60°)!",
                     5,
                     listOf(
-                        "Ingat tabel sudut istimewa trigonometri:",
-                        "Nilai sin(30°) = 1/2, dan cos(60°) = 1/2.",
-                        "Substitusikan ke soal: 4 × (1/2) + 6 × (1/2).",
-                        "Hitung masing-masing perkalian (2 + 3) dan jumlahkan!"
+                        "sin(30°) = 1/2 dan cos(60°) = 1/2.",
+                        "Substitusikan: 4 × (1/2) + 6 × (1/2) = 2 + 3."
                     )
                 ),
                 Triple(
                     "Hitung: 3·tan(45°) + 2·sin(90°)!",
                     5,
                     listOf(
-                        "Ingat nilai sudut istimewa trigonometri:",
-                        "Nilai tan(45°) = 1, dan sin(90°) = 1.",
-                        "Substitusikan ke persamaan: 3 × (1) + 2 × (1).",
-                        "Jumlahkan kedua hasilnya!"
+                        "tan(45°) = 1 dan sin(90°) = 1.",
+                        "Substitusikan: 3 × (1) + 2 × (1)."
                     )
                 ),
                 Triple(
                     "Hitung: 8·cos(60°) + 5·tan(45°) - cos(0°)!",
                     8,
                     listOf(
-                        "Ingat nilai sudut istimewa trigonometri:",
                         "cos(60°) = 1/2, tan(45°) = 1, dan cos(0°) = 1.",
-                        "Substitusikan: 8 × (1/2) + 5 × (1) - 1.",
-                        "Sederhanakan menjadi: 4 + 5 - 1, lalu hitung hasilnya!"
+                        "Substitusikan: 8 × (1/2) + 5 × (1) - 1 = 4 + 5 - 1."
                     )
                 )
             )
@@ -769,7 +825,7 @@ class IronWakeAdminReceiver : DeviceAdminReceiver() {
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
         if (AlarmService.isAlarmRinging && !AlarmService.isTestMode) {
             runCatching { getManager(context).lockNow() }
-            return "CURANG TERDETEKSI! Selesaikan 5 soal misi!"
+            return "CURANG TERDETEKSI! Selesaikan semua soal misi!"
         }
         return "Menonaktifkan proteksi ini membuka kunci Force Stop & Uninstall."
     }
@@ -865,7 +921,7 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("WAKE UP YOU LAZY KIDS!")
-            .setContentText(if (isTestMode) "Mode Uji Coba Alarm Aktif" else "Selesaikan 5 soal misi bangun!")
+            .setContentText(if (isTestMode) "Mode Uji Coba Alarm Aktif" else "Selesaikan misi bangun sekarang!")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setOngoing(true)
@@ -951,7 +1007,7 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
             tts?.setSpeechRate(1.05f)
             val params = Bundle().apply { putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_ALARM) }
             tts?.speak(
-                "SURPRISE! YOU DID IT! Great job champion! All 5 missions completed. Have an awesome productive day!",
+                "SURPRISE! YOU DID IT! Great job champion! All missions completed. Have an awesome productive day!",
                 TextToSpeech.QUEUE_FLUSH,
                 params,
                 "IRON_WAKE_CELEBRATION"
@@ -1012,6 +1068,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import com.example.ironwake.model.CustomMissionStorage
 import com.example.ironwake.model.Difficulty
 import com.example.ironwake.model.MathTopic
 import com.example.ironwake.service.AlarmService
@@ -1050,15 +1107,33 @@ class AlarmRingingActivity : ComponentActivity() {
         val prefs = getSharedPreferences("IronWakePrefs", Context.MODE_PRIVATE)
         val motivationText = prefs.getString("motivation_text", "WAKE UP YOU LAZY KIDS!") ?: "WAKE UP YOU LAZY KIDS!"
         val difficulty = Difficulty.valueOf(prefs.getString("difficulty", Difficulty.NORMAL.name) ?: Difficulty.NORMAL.name)
-        val enabledTopics = prefs.getStringSet("enabled_topics", null)
+        val totalQuestions = prefs.getInt("total_questions", 5).coerceIn(1, 15)
+        val isNopjekUnlocked = prefs.getBoolean("nopjek_unlocked", false)
+        val customQuestions = CustomMissionStorage.loadCustomQuestions(prefs)
+
+        val defaultTopics = setOf(
+            MathTopic.QUADRATIC,
+            MathTopic.LOG_EXP,
+            MathTopic.CALCULUS,
+            MathTopic.SEQUENCE,
+            MathTopic.TRIG_MATRIX
+        )
+        val rawTopics = prefs.getStringSet("enabled_topics", null)
             ?.mapNotNull { runCatching { MathTopic.valueOf(it) }.getOrNull() }
-            ?.toSet() ?: MathTopic.entries.toSet()
+            ?.toSet() ?: defaultTopics
+
+        // Pastikan Nopjek DLC hanya terpakai jika sudah dibuka dengan password "Bengats"
+        val enabledTopics = rawTopics.filter { topic ->
+            if (topic == MathTopic.NOPJEK_DLC) isNopjekUnlocked else true
+        }.toSet().ifEmpty { defaultTopics }
 
         setContent {
             IronWakeTheme {
                 RingingScreen(
                     motivationText = motivationText,
                     enabledTopics = enabledTopics,
+                    customQuestions = customQuestions,
+                    totalQuestions = totalQuestions,
                     difficulty = difficulty,
                     isTestMode = isTestMode,
                     onExitTestMode = { exitAlarmCompletely() },
@@ -1130,6 +1205,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ironwake.R
+import com.example.ironwake.model.CustomQuestionItem
 import com.example.ironwake.model.Difficulty
 import com.example.ironwake.model.MathTopic
 import com.example.ironwake.ui.theme.*
@@ -1141,6 +1217,8 @@ import kotlin.random.Random
 fun RingingScreen(
     motivationText: String,
     enabledTopics: Set<MathTopic>,
+    customQuestions: List<CustomQuestionItem>,
+    totalQuestions: Int,
     difficulty: Difficulty,
     isTestMode: Boolean,
     onExitTestMode: () -> Unit,
@@ -1150,7 +1228,9 @@ fun RingingScreen(
     onFinishCelebration: () -> Unit
 ) {
     var currentStep by remember { mutableIntStateOf(1) }
-    var currentProblem by remember { mutableStateOf(MathGenerator.generateProblem(enabledTopics, difficulty)) }
+    var currentProblem by remember {
+        mutableStateOf(MathGenerator.generateProblem(enabledTopics, difficulty, customQuestions))
+    }
     var userAnswer by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -1190,12 +1270,12 @@ fun RingingScreen(
             errorMessage = null
             userAnswer = ""
             showTutorDialog = false
-            if (currentStep >= 5) {
+            if (currentStep >= totalQuestions) {
                 isCelebrating = true
                 onAllMissionsCompleted()
             } else {
                 currentStep++
-                currentProblem = MathGenerator.generateProblem(enabledTopics, difficulty)
+                currentProblem = MathGenerator.generateProblem(enabledTopics, difficulty, customQuestions)
                 timeLeft = difficulty.durationSeconds
             }
         } else {
@@ -1277,7 +1357,7 @@ fun RingingScreen(
                     )
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        text = "Semua 5 soal berhasil ditaklukkan bersama pendamping belajarmu!",
+                        text = "Semua $totalQuestions soal misi berhasil ditaklukkan bersama pendamping belajarmu!",
                         color = Color.White,
                         fontSize = 15.sp,
                         textAlign = TextAlign.Center,
@@ -1322,7 +1402,7 @@ fun RingingScreen(
                                 modifier = Modifier.border(1.dp, IronCyan, RoundedCornerShape(50))
                             ) {
                                 Text(
-                                    text = "SOAL $currentStep / 5",
+                                    text = "SOAL $currentStep / $totalQuestions",
                                     color = IronCyan,
                                     fontWeight = FontWeight.Black,
                                     fontSize = 13.sp,
@@ -1377,7 +1457,9 @@ fun RingingScreen(
                             .border(1.5.dp, IronCyan, RoundedCornerShape(18.dp))
                     ) {
                         Column(
-                            modifier = Modifier.padding(20.dp),
+                            modifier = Modifier
+                                .padding(20.dp)
+                                .verticalScroll(rememberScrollState()),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Row(
@@ -1460,7 +1542,7 @@ fun RingingScreen(
                                     .height(52.dp)
                             ) {
                                 Text(
-                                    text = if (currentStep < 5) "KIRIM JAWABAN ($currentStep/5)" else "SELESAIKAN MISI!",
+                                    text = if (currentStep < totalQuestions) "KIRIM JAWABAN ($currentStep/$totalQuestions)" else "SELESAIKAN MISI!",
                                     color = Color.Black,
                                     fontWeight = FontWeight.Black,
                                     fontSize = 16.sp
@@ -1531,7 +1613,7 @@ fun RingingScreen(
                             text = if (hasTimedOutBefore)
                                 "WAKTU PENGERJAAN HABIS! Alarm berbunyi kembali.\nTekan tombol di bawah untuk melanjutkan soal ke-$currentStep."
                             else
-                                "Alarm aktif! Masuk ke ruang belajar untuk menjeda suara alarm dan menyelesaikan 5 soal misi.",
+                                "Alarm aktif! Masuk ke ruang belajar untuk menjeda suara alarm dan menyelesaikan $totalQuestions soal misi.",
                             color = Color.White,
                             fontSize = 15.sp,
                             textAlign = TextAlign.Center,
@@ -1546,7 +1628,7 @@ fun RingingScreen(
                             modifier = Modifier.border(1.dp, IronGold, RoundedCornerShape(12.dp))
                         ) {
                             Text(
-                                text = "Progres: Soal $currentStep dari 5 • Durasi ${difficulty.durationSeconds} detik/soal",
+                                text = "Progres: Soal $currentStep dari $totalQuestions • Durasi ${difficulty.durationSeconds} detik/soal",
                                 color = IronGold,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
@@ -1566,7 +1648,7 @@ fun RingingScreen(
                             Icon(Icons.Default.PlayArrow, contentDescription = null, tint = IronGold, modifier = Modifier.size(28.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                text = if (hasTimedOutBefore) "LANJUTKAN SOAL ($currentStep/5)" else "MULAI KERJAKAN SOAL",
+                                text = if (hasTimedOutBefore) "LANJUTKAN SOAL ($currentStep/$totalQuestions)" else "MULAI KERJAKAN SOAL",
                                 color = Color.White,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 18.sp
@@ -1602,7 +1684,7 @@ fun RingingScreen(
                 text = {
                     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                         Text(
-                            text = "Ikuti tahapan berikut untuk menemukan jawabannya:",
+                            text = "Ikuti klu/tahapan berikut untuk menemukan jawabannya:",
                             color = IronGold,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
@@ -1665,6 +1747,7 @@ import android.widget.Toast
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -1674,8 +1757,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ironwake.model.CustomMissionStorage
+import com.example.ironwake.model.CustomQuestionItem
 import com.example.ironwake.model.Difficulty
 import com.example.ironwake.model.MathTopic
 import com.example.ironwake.service.AlarmService
@@ -1692,11 +1779,36 @@ fun HomeScreen() {
     var isAlarmActive by remember { mutableStateOf(prefs.getBoolean("alarm_active", false)) }
     var motivationText by remember { mutableStateOf(prefs.getString("motivation_text", "WAKE UP YOU LAZY KIDS!") ?: "WAKE UP YOU LAZY KIDS!") }
     var difficulty by remember { mutableStateOf(Difficulty.valueOf(prefs.getString("difficulty", Difficulty.NORMAL.name) ?: Difficulty.NORMAL.name)) }
+    var totalQuestions by remember { mutableIntStateOf(prefs.getInt("total_questions", 5).coerceIn(1, 15)) }
+    var isNopjekUnlocked by remember { mutableStateOf(prefs.getBoolean("nopjek_unlocked", false)) }
+    var customQuestions by remember { mutableStateOf(CustomMissionStorage.loadCustomQuestions(prefs)) }
+
+    val defaultTopics = setOf(
+        MathTopic.QUADRATIC,
+        MathTopic.LOG_EXP,
+        MathTopic.CALCULUS,
+        MathTopic.SEQUENCE,
+        MathTopic.TRIG_MATRIX
+    )
     var enabledTopics by remember {
         val savedSet = prefs.getStringSet("enabled_topics", null)
-        mutableStateOf(savedSet?.mapNotNull { runCatching { MathTopic.valueOf(it) }.getOrNull() }?.toSet() ?: MathTopic.entries.toSet())
+        val loaded = savedSet?.mapNotNull { runCatching { MathTopic.valueOf(it) }.getOrNull() }?.toSet() ?: defaultTopics
+        mutableStateOf(
+            loaded.filter { if (it == MathTopic.NOPJEK_DLC) isNopjekUnlocked else true }
+                .toSet()
+                .ifEmpty { defaultTopics }
+        )
     }
+
     var showMissionDialog by remember { mutableStateOf(false) }
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    var passwordInput by remember { mutableStateOf("") }
+    var passwordError by remember { mutableStateOf<String?>(null) }
+
+    var showCustomBuilderDialog by remember { mutableStateOf(false) }
+    var newQuestionText by remember { mutableStateOf("") }
+    var newAnswerText by remember { mutableStateOf("") }
+    var newTutorCluesText by remember { mutableStateOf("") }
 
     val timePickerDialog = TimePickerDialog(context, { _, h, m ->
         hour = h; minute = m
@@ -1772,7 +1884,7 @@ fun HomeScreen() {
         ) {
             Icon(Icons.Default.Tune, null, tint = Color.Black)
             Spacer(Modifier.width(8.dp))
-            Text("MODIFIKASI MISI & DURASI", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 16.sp)
+            Text("MODIFIKASI MISI & PENGAJAR", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 16.sp)
         }
 
         Spacer(Modifier.height(12.dp))
@@ -1796,52 +1908,140 @@ fun HomeScreen() {
         }
     }
 
+    // ================= DIALOG MODIFIKASI MISI, JUMLAH SOAL & DLC =================
     if (showMissionDialog) {
         AlertDialog(
             onDismissRequest = { showMissionDialog = false },
             containerColor = IronSurface,
-            title = { Text("MODIFIKASI MISI & DURASI", color = IronGold, fontWeight = FontWeight.Black) },
+            title = { Text("MODIFIKASI MISI & PENGAJAR", color = IronGold, fontWeight = FontWeight.Black) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    Text("Teks Teriakan Alarm:", color = Color.White, fontWeight = FontWeight.Bold)
-                    OutlinedTextField(value = motivationText, onValueChange = { motivationText = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(12.dp))
-                    Text("Tingkat Kesulitan & Durasi Soal:", color = Color.White, fontWeight = FontWeight.Bold)
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Teks Teriakan Alarm:", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = motivationText,
+                        onValueChange = { motivationText = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Jumlah Soal Misi:", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            FilledTonalIconButton(
+                                onClick = { if (totalQuestions > 1) totalQuestions-- },
+                                modifier = Modifier.size(32.dp)
+                            ) { Text("-", fontWeight = FontWeight.Black) }
+                            Text(
+                                text = "$totalQuestions Soal",
+                                color = IronGold,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp,
+                                modifier = Modifier.padding(horizontal = 12.dp)
+                            )
+                            FilledTonalIconButton(
+                                onClick = { if (totalQuestions < 15) totalQuestions++ },
+                                modifier = Modifier.size(32.dp)
+                            ) { Text("+", fontWeight = FontWeight.Black) }
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+                    Text("Durasi per Soal:", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Difficulty.entries.forEach { diff ->
                             FilterChip(
                                 selected = difficulty == diff,
                                 onClick = { difficulty = diff },
-                                label = { Text(diff.label) }
+                                label = { Text(diff.label, fontSize = 12.sp) }
                             )
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
-                    Text("Pilih Paket Materi & DLC:", color = Color.White, fontWeight = FontWeight.Bold)
+
+                    Spacer(Modifier.height(14.dp))
+                    Button(
+                        onClick = { showCustomBuilderDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = IronCyan),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.AddCircle, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "BUAT SOAL & KLU PENGAJAR (${customQuestions.size})",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+                    Text("Pilih Paket Materi & DLC:", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     MathTopic.entries.forEach { topic ->
-                        val isChecked = enabledTopics.contains(topic)
+                        val isNopjekLocked = (topic == MathTopic.NOPJEK_DLC && !isNopjekUnlocked)
+                        val isCustomEmpty = (topic == MathTopic.CUSTOM_USER && customQuestions.isEmpty())
+                        val isChecked = enabledTopics.contains(topic) && !isNopjekLocked && !isCustomEmpty
+
+                        fun handleTopicToggle(targetState: Boolean) {
+                            if (isNopjekLocked) {
+                                passwordInput = ""
+                                passwordError = null
+                                showPasswordDialog = true
+                                return
+                            }
+                            if (isCustomEmpty) {
+                                Toast.makeText(context, "Buat minimal 1 soal sendiri dulu di tombol biru di atas!", Toast.LENGTH_SHORT).show()
+                                return
+                            }
+                            if (!targetState && enabledTopics.size <= 1) {
+                                Toast.makeText(context, "Minimal pilih 1 materi!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                enabledTopics = if (targetState) enabledTopics + topic else enabledTopics - topic
+                            }
+                        }
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    if (isChecked && enabledTopics.size > 1) enabledTopics = enabledTopics - topic else enabledTopics = enabledTopics + topic
-                                }
+                                .clickable { handleTopicToggle(!isChecked) }
                         ) {
-                            Checkbox(
-                                checked = isChecked,
-                                onCheckedChange = { checked ->
-                                    if (!checked && enabledTopics.size <= 1) Toast.makeText(context, "Minimal pilih 1!", Toast.LENGTH_SHORT).show()
-                                    else enabledTopics = if (checked) enabledTopics + topic else enabledTopics - topic
-                                },
-                                colors = CheckboxDefaults.colors(checkedColor = IronRed)
-                            )
-                            Text(
-                                text = topic.displayName,
-                                color = if (topic == MathTopic.NOPJEK_DLC) IronCyan else Color.White,
-                                fontWeight = if (topic == MathTopic.NOPJEK_DLC) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 14.sp
-                            )
+                            if (isNopjekLocked) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "Terkunci",
+                                    tint = IronGold,
+                                    modifier = Modifier.padding(12.dp).size(20.dp)
+                                )
+                            } else {
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = { handleTopicToggle(it) },
+                                    colors = CheckboxDefaults.colors(checkedColor = IronRed)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = topic.displayName,
+                                    color = when {
+                                        topic == MathTopic.NOPJEK_DLC -> IronGold
+                                        topic == MathTopic.CUSTOM_USER -> IronCyan
+                                        else -> Color.White
+                                    },
+                                    fontWeight = if (topic == MathTopic.NOPJEK_DLC || topic == MathTopic.CUSTOM_USER) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 13.sp
+                                )
+                                if (isNopjekLocked) {
+                                    Text("Ketuk untuk masukkan password DLC", color = Color.Gray, fontSize = 11.sp)
+                                }
+                                if (topic == MathTopic.CUSTOM_USER) {
+                                    Text("${customQuestions.size} soal kustom tersimpan", color = Color.Gray, fontSize = 11.sp)
+                                }
+                            }
                         }
                     }
                 }
@@ -1852,12 +2052,176 @@ fun HomeScreen() {
                         prefs.edit()
                             .putString("motivation_text", motivationText.ifBlank { "WAKE UP YOU LAZY KIDS!" })
                             .putString("difficulty", difficulty.name)
+                            .putInt("total_questions", totalQuestions)
                             .putStringSet("enabled_topics", enabledTopics.map { it.name }.toSet())
                             .apply()
                         showMissionDialog = false
+                        Toast.makeText(context, "Pengaturan misi disimpan!", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = IronRed)
-                ) { Text("SIMPAN", color = Color.White) }
+                ) { Text("SIMPAN", color = Color.White, fontWeight = FontWeight.Bold) }
+            }
+        )
+    }
+
+    // ================= DIALOG PASSWORD NOPJEK DLC =================
+    if (showPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasswordDialog = false },
+            containerColor = Color(0xFF1A1A22),
+            icon = { Icon(Icons.Default.VpnKey, null, tint = IronGold, modifier = Modifier.size(34.dp)) },
+            title = { Text("Buka Nopjek DLC", color = IronGold, fontWeight = FontWeight.Black) },
+            text = {
+                Column {
+                    Text(
+                        text = "Masukkan kata sandi khusus untuk membuka paket soal Kedokteran Gigi Umum (Nopjek DLC):",
+                        color = Color.White,
+                        fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = { passwordInput = it },
+                        label = { Text("Kata Sandi DLC") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (passwordError != null) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(passwordError!!, color = IronCrimson, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (passwordInput.trim() == "Bengats") {
+                            isNopjekUnlocked = true
+                            prefs.edit().putBoolean("nopjek_unlocked", true).apply()
+                            enabledTopics = enabledTopics + MathTopic.NOPJEK_DLC
+                            showPasswordDialog = false
+                            Toast.makeText(context, "Nopjek DLC BERHASIL DIBUKA!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            passwordError = "Password salah! Coba lagi."
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = IronGold)
+                ) { Text("BUKA KUNCI", color = Color.Black, fontWeight = FontWeight.Black) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordDialog = false }) {
+                    Text("BATAL", color = Color.Gray)
+                }
+            }
+        )
+    }
+
+    // ================= DIALOG PEMBUAT SOAL & KLU PENGAJAR SENDIRI =================
+    if (showCustomBuilderDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomBuilderDialog = false },
+            containerColor = Color(0xFF141E30),
+            title = { Text("Soal & Pengajar Kustom", color = IronCyan, fontWeight = FontWeight.Black) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("1. Pertanyaan / Misi Soal:", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = newQuestionText,
+                        onValueChange = { newQuestionText = it },
+                        placeholder = { Text("Contoh: Berapa gigi permanen dewasa?") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("2. Jawaban Benar (Angka Bulat):", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = newAnswerText,
+                        onValueChange = { newAnswerText = it },
+                        placeholder = { Text("Contoh: 32") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("3. Klu / Langkah Pengajar (pisahkan dengan ; ):", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = newTutorCluesText,
+                        onValueChange = { newTutorCluesText = it },
+                        placeholder = { Text("Contoh: Hitung 8 gigi per kuadran; Kalikan dengan 4 kuadran") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = {
+                            val ans = newAnswerText.trim().toIntOrNull()
+                            if (newQuestionText.isBlank() || ans == null) {
+                                Toast.makeText(context, "Isi pertanyaan & jawaban angka bulat!", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            val parsedClues = newTutorCluesText
+                                .split(";", "\n")
+                                .map { it.trim() }
+                                .filter { it.isNotEmpty() }
+                                .ifEmpty { listOf("Ingat kembali materi terkait soal ini dan hitung dengan teliti.") }
+
+                            val updated = customQuestions + CustomQuestionItem(
+                                id = System.currentTimeMillis(),
+                                question = newQuestionText.trim(),
+                                answer = ans,
+                                tutorSteps = parsedClues
+                            )
+                            customQuestions = updated
+                            CustomMissionStorage.saveCustomQuestions(prefs, updated)
+                            enabledTopics = enabledTopics + MathTopic.CUSTOM_USER
+
+                            newQuestionText = ""
+                            newAnswerText = ""
+                            newTutorCluesText = ""
+                            Toast.makeText(context, "Soal kustom ditambahkan!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = IronEmerald),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("+ TAMBAHKAN KE DAFTAR", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                    }
+
+                    if (customQuestions.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        Text("Daftar Soal Buatanmu (${customQuestions.size}):", color = IronGold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Spacer(Modifier.height(6.dp))
+                        customQuestions.forEach { item ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(item.question, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Jawaban: ${item.answer} • ${item.tutorSteps.size} klu pengajar", color = IronCyan, fontSize = 11.sp)
+                                }
+                                IconButton(onClick = {
+                                    val filtered = customQuestions.filterNot { it.id == item.id }
+                                    customQuestions = filtered
+                                    CustomMissionStorage.saveCustomQuestions(prefs, filtered)
+                                    if (filtered.isEmpty()) {
+                                        enabledTopics = enabledTopics - MathTopic.CUSTOM_USER
+                                    }
+                                }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = IronCrimson)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showCustomBuilderDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = IronCyan)
+                ) { Text("SELESAI", color = Color.Black, fontWeight = FontWeight.Black) }
             }
         )
     }
@@ -1918,4 +2282,4 @@ for path, content in files.items():
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
-print("Semua file proyek IronWake v5.1 + Nopjek DLC berhasil dibuat!")
+print("Semua file proyek IronWake v6.0 (Custom Mission + Password DLC) berhasil dibuat!")
