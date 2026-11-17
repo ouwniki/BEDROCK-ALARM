@@ -89,8 +89,8 @@ android {
         applicationId = "com.example.ironwake"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "6.0-CustomMission"
+        versionCode = 8
+        versionName = "6.1-AdminGuide"
     }
 
     buildFeatures {
@@ -819,15 +819,15 @@ import com.example.ironwake.service.AlarmService
 class IronWakeAdminReceiver : DeviceAdminReceiver() {
     override fun onEnabled(context: Context, intent: Intent) {
         super.onEnabled(context, intent)
-        Toast.makeText(context, "Proteksi Anti-Kabur AKTIF!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Mode Admin Anti-Kabur AKTIF!", Toast.LENGTH_SHORT).show()
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
         if (AlarmService.isAlarmRinging && !AlarmService.isTestMode) {
             runCatching { getManager(context).lockNow() }
-            return "CURANG TERDETEKSI! Selesaikan semua soal misi!"
+            return "CURANG TERDETEKSI! Selesaikan semua soal misi terlebih dahulu!"
         }
-        return "Menonaktifkan proteksi ini membuka kunci Force Stop & Uninstall."
+        return "Menonaktifkan Mode Admin akan membuka kembali tombol Force Stop & Uninstall aplikasi ini."
     }
 }
 """,
@@ -853,6 +853,7 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
     private var isTtsReady = false
     private lateinit var audioManager: AudioManager
     private var vibrator: Vibrator? = null
+    private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
 
     companion object {
@@ -881,6 +882,10 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
         super.onCreate()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "IronWake::AlarmWakeLock").apply {
+            acquire(30 * 60 * 1000L)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL_ID, "IronWake Alarm", NotificationManager.IMPORTANCE_HIGH).apply {
                 setBypassDnd(true)
@@ -1050,6 +1055,7 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
         runCatching { mediaPlayer?.stop(); mediaPlayer?.release() }
         runCatching { tts?.stop(); tts?.shutdown() }
         vibrator?.cancel()
+        runCatching { if (wakeLock?.isHeld == true) wakeLock?.release() }
         super.onDestroy()
     }
 
@@ -1122,7 +1128,6 @@ class AlarmRingingActivity : ComponentActivity() {
             ?.mapNotNull { runCatching { MathTopic.valueOf(it) }.getOrNull() }
             ?.toSet() ?: defaultTopics
 
-        // Pastikan Nopjek DLC hanya terpakai jika sudah dibuka dengan password "Bengats"
         val enabledTopics = rawTopics.filter { topic ->
             if (topic == MathTopic.NOPJEK_DLC) isNopjekUnlocked else true
         }.toSet().ifEmpty { defaultTopics }
@@ -1740,9 +1745,12 @@ fun RingingScreen(
     "app/src/main/java/com/example/ironwake/ui/screens/HomeScreen.kt": r"""package com.example.ironwake.ui.screens
 
 import android.app.TimePickerDialog
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -1756,15 +1764,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.ironwake.model.CustomMissionStorage
 import com.example.ironwake.model.CustomQuestionItem
 import com.example.ironwake.model.Difficulty
 import com.example.ironwake.model.MathTopic
+import com.example.ironwake.receiver.IronWakeAdminReceiver
 import com.example.ironwake.service.AlarmService
 import com.example.ironwake.ui.theme.*
 import com.example.ironwake.util.AlarmScheduler
@@ -1773,7 +1785,22 @@ import java.util.Locale
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val prefs = remember { context.getSharedPreferences("IronWakePrefs", Context.MODE_PRIVATE) }
+    val dpm = remember { context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager }
+    val adminComponent = remember { ComponentName(context, IronWakeAdminReceiver::class.java) }
+
+    var isAdminActive by remember { mutableStateOf(dpm.isAdminActive(adminComponent)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isAdminActive = dpm.isAdminActive(adminComponent)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     var hour by remember { mutableIntStateOf(prefs.getInt("alarm_hour", 5)) }
     var minute by remember { mutableIntStateOf(prefs.getInt("alarm_minute", 0)) }
     var isAlarmActive by remember { mutableStateOf(prefs.getBoolean("alarm_active", false)) }
@@ -1801,6 +1828,7 @@ fun HomeScreen() {
     }
 
     var showMissionDialog by remember { mutableStateOf(false) }
+    var showAdminGuideDialog by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf<String?>(null) }
@@ -1824,12 +1852,13 @@ fun HomeScreen() {
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp, bottom = 24.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp, bottom = 20.dp)) {
             Icon(Icons.Default.FitnessCenter, null, tint = IronGold, modifier = Modifier.size(32.dp))
             Spacer(Modifier.width(10.dp))
             Text("IRONWAKE ALARM", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
         }
 
+        // ================= KARTU JADWAL ALARM =================
         Card(
             colors = CardDefaults.cardColors(containerColor = IronSurface),
             shape = RoundedCornerShape(20.dp),
@@ -1872,8 +1901,9 @@ fun HomeScreen() {
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
 
+        // ================= TOMBOL MODIFIKASI MISI & UJI COBA =================
         Button(
             onClick = { showMissionDialog = true },
             colors = ButtonDefaults.buttonColors(containerColor = IronGold),
@@ -1884,10 +1914,10 @@ fun HomeScreen() {
         ) {
             Icon(Icons.Default.Tune, null, tint = Color.Black)
             Spacer(Modifier.width(8.dp))
-            Text("MODIFIKASI MISI & PENGAJAR", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 16.sp)
+            Text("MODIFIKASI MISI & PENGAJAR", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 15.sp)
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
 
         OutlinedButton(
             onClick = {
@@ -1906,6 +1936,195 @@ fun HomeScreen() {
             Spacer(Modifier.width(6.dp))
             Text("UJI COBA ALARM SEKARANG", color = IronRed, fontWeight = FontWeight.Bold)
         }
+
+        Spacer(Modifier.height(20.dp))
+
+        // ================= KARTU FITUR PILIHAN: MODE ADMIN & BUKU PANDUAN =================
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF141824)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.5.dp, if (isAdminActive) IronEmerald else IronCyan, RoundedCornerShape(16.dp))
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.AdminPanelSettings,
+                            contentDescription = null,
+                            tint = if (isAdminActive) IronEmerald else IronCyan,
+                            modifier = Modifier.size(26.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "MODE ADMIN (OPSIONAL)",
+                                color = Color.White,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = if (isAdminActive) "Status: AKTIF (Anti-Uninstall)" else "Status: NONAKTIF (Bisa dihapus normal)",
+                                color = if (isAdminActive) IronEmerald else Color.Gray,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            if (!isAdminActive) {
+                                context.startActivity(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                                    putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
+                                    putExtra(
+                                        DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                                        "Mengaktifkan Mode Admin akan mengunci tombol Hapus (Uninstall) dan Paksa Berhenti (Force Stop) agar kamu tidak bisa kabur saat alarm berbunyi."
+                                    )
+                                })
+                            } else {
+                                showAdminGuideDialog = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isAdminActive) IronEmerald else IronRed
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = if (isAdminActive) Icons.Default.VerifiedUser else Icons.Default.Security,
+                            contentDescription = null,
+                            tint = if (isAdminActive) Color.Black else Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = if (isAdminActive) "MODE AKTIF" else "AKTIFKAN ADMIN",
+                            color = if (isAdminActive) Color.Black else Color.White,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { showAdminGuideDialog = true },
+                        border = BorderStroke(1.dp, IronGold),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.MenuBook, contentDescription = null, tint = IronGold, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "BUKU PANDUAN",
+                            color = IronGold,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // ================= DIALOG BUKU PANDUAN MODE ADMIN & CARA UNINSTALL =================
+    if (showAdminGuideDialog) {
+        AlertDialog(
+            onDismissRequest = { showAdminGuideDialog = false },
+            containerColor = Color(0xFF131926),
+            icon = { Icon(Icons.Default.MenuBook, null, tint = IronGold, modifier = Modifier.size(36.dp)) },
+            title = {
+                Text(
+                    text = "Buku Panduan & Risiko Mode Admin",
+                    color = IronGold,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("1. Apa Fungsi & Risiko Mode Admin?", color = IronCrimson, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "• Aplikasi TIDAK BISA DIHAPUS (Uninstall) atau dipaksa berhenti (Force Stop) selama Mode Admin aktif.\n" +
+                               "• Jika kamu mencoba mencabut izin Mode Admin saat alarm berbunyi, layar HP akan langsung dikunci otomatis.",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+                    Text("2. Perilaku Suara & Layar Mati:", color = IronCyan, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "• Alarm berjalan dengan layanan prioritas tinggi (WakeLock) sehingga suara tetap menyala keras meskipun layar HP dimatikan (Sleep/Lock) atau aplikasi dikeluarkan dari daftar Recent Apps.\n" +
+                               "• Catatan Sistem: Jika HP dimatikan total (Power Off / kehabisan baterai), sistem Android menghentikan seluruh aplikasi dan alarm baru akan aktif kembali setelah HP dinyalakan.",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+                    Text("3. Cara Menghapus (Uninstall) Aplikasi:", color = IronEmerald, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Aplikasi hanya bisa dihapus jika Mode Admin dalam keadaan NONAKTIF. Ikuti langkah berikut:\n" +
+                               "1) Pastikan tidak ada alarm yang sedang berbunyi.\n" +
+                               "2) Tekan tombol 'CABUT IZIN ADMIN' di bawah ini (atau buka Pengaturan HP > Keamanan > Aplikasi Admin Perangkat > IronWake > Nonaktifkan).\n" +
+                               "3) Setelah nonaktif, tahan ikon IronWake di layar utama lalu pilih Hapus / Uninstall seperti biasa.",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    )
+
+                    if (isAdminActive) {
+                        Spacer(Modifier.height(14.dp))
+                        Button(
+                            onClick = {
+                                if (AlarmService.isAlarmRinging && !AlarmService.isTestMode) {
+                                    Toast.makeText(context, "Selesaikan alarm dulu sebelum mencabut Mode Admin!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    runCatching { dpm.removeActiveAdmin(adminComponent) }
+                                    isAdminActive = dpm.isAdminActive(adminComponent)
+                                    if (!isAdminActive) {
+                                        Toast.makeText(context, "Mode Admin dinonaktifkan. Aplikasi sekarang bisa dihapus.", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = IronCrimson),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.NoEncryption, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("CABUT IZIN ADMIN (AGAR BISA UNINSTALL)", color = Color.White, fontWeight = FontWeight.Black, fontSize = 11.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showAdminGuideDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = IronGold)
+                ) {
+                    Text("SAYA MENGERTI", color = Color.Black, fontWeight = FontWeight.Black)
+                }
+            }
+        )
     }
 
     // ================= DIALOG MODIFIKASI MISI, JUMLAH SOAL & DLC =================
@@ -2232,8 +2451,6 @@ fun HomeScreen() {
 
 import android.Manifest
 import android.app.AlarmManager
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -2245,7 +2462,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import com.example.ironwake.receiver.IronWakeAdminReceiver
 import com.example.ironwake.ui.screens.HomeScreen
 import com.example.ironwake.ui.theme.IronWakeTheme
 
@@ -2264,14 +2480,7 @@ class MainActivity : ComponentActivity() {
         if (!Settings.canDrawOverlays(this)) {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
         }
-        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        val adminComponent = ComponentName(this, IronWakeAdminReceiver::class.java)
-        if (!dpm.isAdminActive(adminComponent)) {
-            startActivity(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Kunci Force Stop & Uninstall saat alarm berbunyi!")
-            })
-        }
+        // Mode Admin kini bersifat opsional dan dapat diaktifkan melalui tombol & buku panduan di layar beranda
         setContent { IronWakeTheme { HomeScreen() } }
     }
 }
@@ -2282,4 +2491,4 @@ for path, content in files.items():
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
-print("Semua file proyek IronWake v6.0 (Custom Mission + Password DLC) berhasil dibuat!")
+print("Semua file proyek IronWake v6.1 (Optional Admin Mode + Guidebook) berhasil dibuat!")
