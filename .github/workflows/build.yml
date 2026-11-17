@@ -25,6 +25,12 @@ jobs:
       - name: Rakit Seluruh Kode Proyek Otomatis
         run: python3 setup_project.py
 
+      - name: Unduh Voice Over YouTube
+        run: |
+          pip install -q yt-dlp
+          mkdir -p app/src/main/res/raw
+          yt-dlp -x --audio-format mp3 --audio-quality 128K -o "app/src/main/res/raw/wake_up_speech.%(ext)s" "https://youtu.be/BeXsAWYABW0" || echo "Fallback ke TTS bawaan"
+
       - name: Buat Gradle Wrapper Otomatis
         run: gradle wrapper --gradle-version 8.2
 
