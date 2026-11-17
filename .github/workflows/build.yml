@@ -19,8 +19,8 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Siapkan Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Terima Lisensi Android SDK
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Rakit Seluruh Kode Proyek Otomatis
         run: python3 setup_project.py
