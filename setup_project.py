@@ -89,8 +89,8 @@ android {
         applicationId = "com.example.ironwake"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "5.0"
+        versionCode = 6
+        versionName = "5.1-NopjekDLC"
     }
 
     buildFeatures {
@@ -305,6 +305,7 @@ fun IronWakeTheme(content: @Composable () -> Unit) {
     "app/src/main/java/com/example/ironwake/model/MathProblem.kt": r"""package com.example.ironwake.model
 
 enum class MathTopic(val displayName: String) {
+    NOPJEK_DLC("Nopjek DLC (Kedokteran Gigi Umum)"),
     QUADRATIC("Persamaan Kuadrat & Akar"),
     LOG_EXP("Logaritma & Eksponen"),
     CALCULUS("Turunan & Integral Dasar"),
@@ -313,8 +314,8 @@ enum class MathTopic(val displayName: String) {
 }
 
 enum class Difficulty(val label: String, val durationSeconds: Int) {
-    NORMAL("Standar SMA (90 dtk)", 90),
-    HARD("Intensif UTBK (60 dtk)", 60)
+    NORMAL("Standar (90 dtk)", 90),
+    HARD("Intensif (60 dtk)", 60)
 }
 
 data class MathProblem(
@@ -338,12 +339,137 @@ object MathGenerator {
     fun generateProblem(enabledTopics: Set<MathTopic>, difficulty: Difficulty): MathProblem {
         val pool = if (enabledTopics.isEmpty()) MathTopic.entries else enabledTopics.toList()
         return when (pool.random()) {
+            MathTopic.NOPJEK_DLC -> generateNopjekDental(difficulty)
             MathTopic.QUADRATIC -> generateQuadratic(difficulty)
             MathTopic.LOG_EXP -> generateLogExp(difficulty)
             MathTopic.CALCULUS -> generateCalculus(difficulty)
             MathTopic.SEQUENCE -> generateSequence(difficulty)
             MathTopic.TRIG_MATRIX -> generateTrigOrMatrix(difficulty)
         }
+    }
+
+    private fun generateNopjekDental(difficulty: Difficulty): MathProblem {
+        val dentalBank = listOf(
+            // 1. Nomenklatur FDI
+            MathProblem(
+                topic = MathTopic.NOPJEK_DLC,
+                question = "[NOPJEK DLC - ANATOMI GIGI]\nDalam sistem penomoran FDI, gigi Molar Pertama Permanen Kanan Bawah memiliki kode nomor berapa?",
+                correctAnswer = 46,
+                hint = "Kuadran 4 = kanan bawah permanen, gigi ke-6 dari garis median",
+                tutorSteps = listOf(
+                    "Sistem FDI terdiri dari 2 digit: digit pertama = kuadran, digit kedua = urutan gigi dari garis tengah (median).",
+                    "Kuadran gigi permanen: 1 (kanan atas), 2 (kiri atas), 3 (kiri bawah), 4 (kanan bawah).",
+                    "Urutan gigi dari median: 1 (insisivus sentral), 2 (insisivus lateral), 3 (kaninus), 4 (premolar 1), 5 (premolar 2), 6 (molar 1).",
+                    "Gabungkan kuadran kanan bawah (4) dan urutan molar pertama (6)!"
+                )
+            ),
+            MathProblem(
+                topic = MathTopic.NOPJEK_DLC,
+                question = "[NOPJEK DLC - ANATOMI GIGI]\nDalam sistem FDI, gigi Kaninus Permanen Kiri Atas memiliki nomor berapa?",
+                correctAnswer = 23,
+                hint = "Kuadran 2 = kiri atas permanen, kaninus = urutan ke-3",
+                tutorSteps = listOf(
+                    "Identifikasi kuadran gigi permanen: Kiri atas adalah kuadran 2.",
+                    "Urutan gigi dari garis tengah: 1 = Insisivus 1, 2 = Insisivus 2, 3 = Kaninus.",
+                    "Gabungkan kode kuadran (2) dengan posisi kaninus (3)!"
+                )
+            ),
+            MathProblem(
+                topic = MathTopic.NOPJEK_DLC,
+                question = "[NOPJEK DLC - PEDODONSIA]\nDalam sistem FDI, gigi Molar Kedua Sulung (Gigi Susu) Kiri Bawah memiliki kode nomor berapa?",
+                correctAnswer = 75,
+                hint = "Kuadran gigi sulung: 5, 6, 7 (kiri bawah), 8; molar kedua = urutan ke-5",
+                tutorSteps = listOf(
+                    "Kuadran gigi sulung dimulai dari angka 5 sampai 8 searah jarum jam:",
+                    "5 = kanan atas, 6 = kiri atas, 7 = kiri bawah, 8 = kanan bawah.",
+                    "Urutan gigi sulung per kuadran hanya ada 5 gigi (1–5), di mana nomor 5 adalah Molar Kedua Sulung.",
+                    "Gabungkan kuadran kiri bawah sulung (7) dengan urutan ke-5!"
+                )
+            ),
+            // 2. Jumlah Gigi & Morfologi
+            MathProblem(
+                topic = MathTopic.NOPJEK_DLC,
+                question = "[NOPJEK DLC - ODONTOLOGI]\nBerapa total jumlah seluruh gigi sulung (gigi susu) lengkap pada anak-anak?",
+                correctAnswer = 20,
+                hint = "Setiap kuadran memiliki 5 gigi (2 insisivus, 1 kaninus, 2 molar)",
+                tutorSteps = listOf(
+                    "Pada periode gigi sulung, belum terdapat gigi premolar maupun molar ketiga.",
+                    "Setiap kuadran terdiri dari: 2 insisivus + 1 kaninus + 2 molar = 5 gigi.",
+                    "Kalikan jumlah gigi per kuadran (5) dengan total 4 kuadran rahang!"
+                )
+            ),
+            MathProblem(
+                topic = MathTopic.NOPJEK_DLC,
+                question = "[NOPJEK DLC - ODONTOLOGI]\nBerapa total jumlah seluruh gigi permanen lengkap pada manusia dewasa (termasuk M3)?",
+                correctAnswer = 32,
+                hint = "Setiap kuadran memiliki 8 gigi × 4 kuadran",
+                tutorSteps = listOf(
+                    "Pada periode gigi permanen lengkap, setiap kuadran memiliki 8 gigi:",
+                    "2 insisivus + 1 kaninus + 2 premolar + 3 molar = 8 gigi per kuadran.",
+                    "Kalikan 8 gigi dengan 4 kuadran (kanan/kiri, atas/bawah)!"
+                )
+            ),
+            // 3. Karies & Konservasi Gigi
+            MathProblem(
+                topic = MathTopic.NOPJEK_DLC,
+                question = "[NOPJEK DLC - KONSERVASI]\nMenurut klasifikasi G.V. Black, karies yang mengenai permukaan proksimal (mesial/distal) gigi posterior termasuk Kelas berapa?",
+                correctAnswer = 2,
+                hint = "Kelas I = pit & fisura; Kelas II = proksimal posterior; Kelas III = proksimal anterior",
+                tutorSteps = listOf(
+                    "Ingat urutan klasifikasi karies G.V. Black:",
+                    "Kelas I: Pit dan fisura oklusal posterior / foramen caecum.",
+                    "Kelas II: Permukaan proksimal (mesial/distal) gigi posterior (premolar dan molar).",
+                    "Kelas III: Permukaan proksimal gigi anterior tanpa melibatkan tepi insisal."
+                )
+            ),
+            MathProblem(
+                topic = MathTopic.NOPJEK_DLC,
+                question = "[NOPJEK DLC - KONSERVASI]\nKaries pada 1/3 servikal bagian fasial atau lingual semua gigi (baik anterior maupun posterior) menurut G.V. Black termasuk Kelas berapa?",
+                correctAnswer = 5,
+                hint = "Kelas IV = sudut insisal anterior; Kelas V = servikal gigi",
+                tutorSteps = listOf(
+                    "Ingat klasifikasi G.V. Black untuk lesi di dekat gusi (servikal):",
+                    "Kelas IV melibatkan tepi/sudut insisal gigi anterior.",
+                    "Kelas V berada pada 1/3 servikal (leher gigi) permukaan bukal/labial maupun lingual/palatal."
+                )
+            ),
+            // 4. Farmakologi & Hitungan Klinis Dokter Gigi
+            MathProblem(
+                topic = MathTopic.NOPJEK_DLC,
+                question = "[NOPJEK DLC - FARMAKOLOGI KLINIS]\nDosis maksimal Lidokain dengan vasokonstriktor adalah 7 mg/kgBB. Berapa mg dosis maksimal untuk pasien dengan berat 50 kg?",
+                correctAnswer = 350,
+                hint = "Dosis maksimal = 7 mg × berat badan pasien (kg)",
+                tutorSteps = listOf(
+                    "Diketahui dosis maksimal aman Lidokain (+ epinefrin) adalah 7 mg per kg berat badan.",
+                    "Berat badan pasien adalah 50 kg.",
+                    "Kalikan 7 mg/kg × 50 kg untuk memperoleh batas maksimal dalam miligram (mg)!"
+                )
+            ),
+            MathProblem(
+                topic = MathTopic.NOPJEK_DLC,
+                question = "[NOPJEK DLC - FARMAKOLOGI KLINIS]\nSatu karpul anestesi lokal berisi 1,8 mL Lidokain 2% (20 mg/mL). Berapa mg kandungan Lidokain dalam 1 karpul tersebut?",
+                correctAnswer = 36,
+                hint = "2% = 20 mg/mL. Kalikan 20 mg × 1,8 mL",
+                tutorSteps = listOf(
+                    "Larutan konsentrasi 2% berarti terdapat 2 gram zat dalam 100 mL, atau sama dengan 20 mg/mL.",
+                    "Volume 1 karpul standar kedokteran gigi adalah 1,8 mL.",
+                    "Kalikan konsentrasi (20 mg/mL) dengan volume (1,8 mL)!"
+                )
+            ),
+            // 5. IKGM (Indeks DMF-T)
+            MathProblem(
+                topic = MathTopic.NOPJEK_DLC,
+                question = "[NOPJEK DLC - IKGM]\nHasil pemeriksaan odontogram pasien: 4 gigi karies (D), 2 gigi dicabut karena karies (M), dan 3 gigi ditambal baik (F). Berapa skor DMF-T pasien?",
+                correctAnswer = 9,
+                hint = "DMF-T = Decayed (D) + Missing (M) + Filled (F)",
+                tutorSteps = listOf(
+                    "Indeks DMF-T menghitung total pengalaman karies gigi permanen individu.",
+                    "Rumus: DMF-T = D (Decayed/karies) + M (Missing/hilang) + F (Filled/tumpatan).",
+                    "Jumlahkan seluruh komponen: 4 + 2 + 3!"
+                )
+            )
+        )
+        return dentalBank.random()
     }
 
     private fun generateQuadratic(difficulty: Difficulty): MathProblem {
@@ -643,7 +769,7 @@ class IronWakeAdminReceiver : DeviceAdminReceiver() {
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
         if (AlarmService.isAlarmRinging && !AlarmService.isTestMode) {
             runCatching { getManager(context).lockNow() }
-            return "CURANG TERDETEKSI! Selesaikan 5 soal matematika SMA!"
+            return "CURANG TERDETEKSI! Selesaikan 5 soal misi!"
         }
         return "Menonaktifkan proteksi ini membuka kunci Force Stop & Uninstall."
     }
@@ -739,7 +865,7 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("WAKE UP YOU LAZY KIDS!")
-            .setContentText(if (isTestMode) "Mode Uji Coba Alarm Aktif" else "Selesaikan 5 soal matematika SMA!")
+            .setContentText(if (isTestMode) "Mode Uji Coba Alarm Aktif" else "Selesaikan 5 soal misi bangun!")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setOngoing(true)
@@ -1151,7 +1277,7 @@ fun RingingScreen(
                     )
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        text = "Semua 5 soal matematika SMA berhasil ditaklukkan bersama pendamping belajarmu!",
+                        text = "Semua 5 soal berhasil ditaklukkan bersama pendamping belajarmu!",
                         color = Color.White,
                         fontSize = 15.sp,
                         textAlign = TextAlign.Center,
@@ -1286,10 +1412,10 @@ fun RingingScreen(
                             Text(
                                 text = currentProblem.question,
                                 color = Color.White,
-                                fontSize = 20.sp,
+                                fontSize = 19.sp,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
-                                lineHeight = 28.sp
+                                lineHeight = 27.sp
                             )
                             Spacer(Modifier.height(16.dp))
 
@@ -1405,7 +1531,7 @@ fun RingingScreen(
                             text = if (hasTimedOutBefore)
                                 "WAKTU PENGERJAAN HABIS! Alarm berbunyi kembali.\nTekan tombol di bawah untuk melanjutkan soal ke-$currentStep."
                             else
-                                "Alarm aktif! Masuk ke ruang belajar untuk menjeda suara alarm dan menyelesaikan 5 soal matematika.",
+                                "Alarm aktif! Masuk ke ruang belajar untuk menjeda suara alarm dan menyelesaikan 5 soal misi.",
                             color = Color.White,
                             fontSize = 15.sp,
                             textAlign = TextAlign.Center,
@@ -1691,7 +1817,7 @@ fun HomeScreen() {
                         }
                     }
                     Spacer(Modifier.height(12.dp))
-                    Text("Pilih Materi SMA:", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Pilih Paket Materi & DLC:", color = Color.White, fontWeight = FontWeight.Bold)
                     MathTopic.entries.forEach { topic ->
                         val isChecked = enabledTopics.contains(topic)
                         Row(
@@ -1710,7 +1836,12 @@ fun HomeScreen() {
                                 },
                                 colors = CheckboxDefaults.colors(checkedColor = IronRed)
                             )
-                            Text(topic.displayName, color = Color.White, fontSize = 14.sp)
+                            Text(
+                                text = topic.displayName,
+                                color = if (topic == MathTopic.NOPJEK_DLC) IronCyan else Color.White,
+                                fontWeight = if (topic == MathTopic.NOPJEK_DLC) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 14.sp
+                            )
                         }
                     }
                 }
@@ -1787,4 +1918,4 @@ for path, content in files.items():
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
-print("Semua file proyek IronWake v5.0 (Clean Raw String) berhasil dibuat!")
+print("Semua file proyek IronWake v5.1 + Nopjek DLC berhasil dibuat!")
