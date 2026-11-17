@@ -44,8 +44,8 @@ android {
         applicationId = "com.example.ironwake"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
     }
 
     buildFeatures {
@@ -89,6 +89,54 @@ dependencies {
 </device-admin>
 """,
 
+    "app/src/main/res/drawable/ic_launcher_background.xml": """<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#0D0D10" android:pathData="M0,0h108v108h-108z" />
+    <path android:fillColor="#26FFD700" android:pathData="M54,54m-42,0a42,42 0,1 1,84 0a42,42 0,1 1,-84 0" />
+    <path android:strokeColor="#D32F2F" android:strokeWidth="3" android:pathData="M54,54m-44,0a44,44 0,1 1,88 0a44,44 0,1 1,-88 0" />
+</vector>
+""",
+
+    "app/src/main/res/drawable/ic_launcher_foreground.xml": """<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#D32F2F"
+        android:strokeColor="#FFD700"
+        android:strokeWidth="2.5"
+        android:pathData="M34,42 C34,28 74,28 74,42 C78,54 71,70 54,70 C37,70 30,54 34,42 Z" />
+    <path
+        android:strokeColor="#FF8A80"
+        android:strokeWidth="2"
+        android:pathData="M40,42 Q54,36 68,42" />
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M41,68 L67,68 L64,78 L44,78 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M56,22 L47,38 L54,38 L50,52 L63,35 L55,35 Z" />
+</vector>
+""",
+
+    "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml": """<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
+""",
+
+    "app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml": """<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
+""",
+
     "app/src/main/res/drawable/bg_boxer_punch.xml": """<vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="400dp"
     android:height="800dp"
@@ -105,8 +153,7 @@ dependencies {
 """,
 
     "app/src/main/AndroidManifest.xml": """<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.ironwake">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
@@ -121,6 +168,8 @@ dependencies {
 
     <application
         android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
@@ -187,6 +236,7 @@ val IronSurface = Color(0xFF16161A)
 val IronRed = Color(0xFFD32F2F)
 val IronCrimson = Color(0xFFFF1744)
 val IronGold = Color(0xFFFFD700)
+val IronEmerald = Color(0xFF00E676)
 
 private val IronDarkColorScheme = darkColorScheme(
     primary = IronRed,
@@ -352,7 +402,9 @@ object AlarmScheduler {
             set(Calendar.MILLISECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }
-        val intent = Intent(context, AlarmReceiver::class.java)
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            putExtra("IS_TEST_MODE", false)
+        }
         val pendingIntent = PendingIntent.getBroadcast(context, 1001, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) return
@@ -378,7 +430,10 @@ import com.example.ironwake.service.AlarmService
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        val serviceIntent = Intent(context, AlarmService::class.java)
+        val isTestMode = intent?.getBooleanExtra("IS_TEST_MODE", false) ?: false
+        val serviceIntent = Intent(context, AlarmService::class.java).apply {
+            putExtra("IS_TEST_MODE", isTestMode)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(serviceIntent)
         else context.startService(serviceIntent)
     }
@@ -400,8 +455,8 @@ class IronWakeAdminReceiver : DeviceAdminReceiver() {
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
-        if (AlarmService.isAlarmRinging) {
-            getManager(context).lockNow()
+        if (AlarmService.isAlarmRinging && !AlarmService.isTestMode) {
+            runCatching { getManager(context).lockNow() }
             return "CURANG TERDETEKSI! Selesaikan 5 soal matematika SMA!"
         }
         return "Menonaktifkan proteksi ini membuka kunci Force Stop & Uninstall."
@@ -417,6 +472,9 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
+import android.media.Ringtone
+import android.media.RingtoneManager
+import android.media.ToneGenerator
 import android.os.*
 import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
@@ -425,6 +483,8 @@ import java.util.Locale
 
 class AlarmService : Service(), TextToSpeech.OnInitListener {
     private var mediaPlayer: MediaPlayer? = null
+    private var ringtone: Ringtone? = null
+    private var toneGenerator: ToneGenerator? = null
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
     private lateinit var audioManager: AudioManager
@@ -434,15 +494,19 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
     companion object {
         const val CHANNEL_ID = "IRON_WAKE_ALARM_CHANNEL"
         const val NOTIFICATION_ID = 999
+        const val ACTION_CELEBRATE = "com.example.ironwake.ACTION_CELEBRATE"
         var isAlarmRinging = false
+        var isTestMode = false
+        var isCelebrating = false
     }
 
     private val enforcementRunnable = object : Runnable {
         override fun run() {
-            if (!isAlarmRinging) return
+            if (!isAlarmRinging || isCelebrating) return
             forceMaxAlarmVolume()
+            runCatching { toneGenerator?.startTone(ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK, 450) }
             if (mediaPlayer == null && isTtsReady) speakMotivation()
-            handler.postDelayed(this, 3500L)
+            handler.postDelayed(this, 3200L)
         }
     }
 
@@ -450,27 +514,43 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
         super.onCreate()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        runCatching { toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 95) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "IronWake Alarm", NotificationManager.IMPORTANCE_HIGH).apply { setBypassDnd(true) }
+            val channel = NotificationChannel(CHANNEL_ID, "IronWake Alarm", NotificationManager.IMPORTANCE_HIGH).apply {
+                setBypassDnd(true)
+            }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_CELEBRATE) {
+            triggerCelebrationAudio()
+            return START_NOT_STICKY
+        }
+
+        isTestMode = intent?.getBooleanExtra("IS_TEST_MODE", false) ?: false
         isAlarmRinging = true
+        isCelebrating = false
         forceMaxAlarmVolume()
+
         val pattern = longArrayOf(0, 600, 300, 600)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+        }
 
         val fullScreenIntent = Intent(this, AlarmRingingActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra("IS_TEST_MODE", isTestMode)
         }
-        val fullScreenPendingIntent = PendingIntent.getActivity(this, 0, fullScreenIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            this, 0, fullScreenIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("WAKE UP YOU LAZY KIDS!")
-            .setContentText("Selesaikan 5 soal matematika SMA!")
+            .setContentText(if (isTestMode) "Mode Uji Coba Alarm Aktif" else "Selesaikan 5 soal matematika SMA!")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setOngoing(true)
@@ -480,6 +560,21 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
         startForeground(NOTIFICATION_ID, notification)
         startActivity(fullScreenIntent)
 
+        // 1. Putar Ringtone Alarm Sistem sebagai lapisan suara dasar
+        runCatching {
+            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            ringtone = RingtoneManager.getRingtone(this, alarmUri)?.apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    isLooping = true
+                    volume = 0.65f
+                }
+                audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
+                play()
+            }
+        }
+
+        // 2. Putar Voice Over YouTube (wake_up_speech.mp3)
         val rawResId = resources.getIdentifier("wake_up_speech", "raw", packageName)
         if (rawResId != 0) {
             try {
@@ -489,20 +584,69 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
                     setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
                     afd.close()
                     isLooping = true
+                    setVolume(1.0f, 1.0f)
                     prepare()
                     start()
                 }
-            } catch (e: Exception) { tts = TextToSpeech(this, this) }
+            } catch (e: Exception) {
+                tts = TextToSpeech(this, this)
+            }
         } else {
             tts = TextToSpeech(this, this)
         }
+
+        // Siapkan TTS juga untuk pengumuman perayaan saat misi selesai
+        if (tts == null) {
+            tts = TextToSpeech(this, this)
+        }
+
         handler.post(enforcementRunnable)
         return START_STICKY
     }
 
+    private fun triggerCelebrationAudio() {
+        isCelebrating = true
+        isAlarmRinging = false
+        handler.removeCallbacks(enforcementRunnable)
+
+        // Matikan semua suara alarm & getaran seketika
+        runCatching { mediaPlayer?.stop(); mediaPlayer?.release() }
+        mediaPlayer = null
+        runCatching { ringtone?.stop() }
+        ringtone = null
+        vibrator?.cancel()
+
+        // Mainkan nada perayaan / fanfare menang!
+        runCatching {
+            val notifUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            RingtoneManager.getRingtone(this, notifUri)?.play()
+        }
+        handler.postDelayed({
+            runCatching { toneGenerator?.startTone(ToneGenerator.TONE_PROP_ACK, 300) }
+        }, 250L)
+        handler.postDelayed({
+            runCatching { toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP2, 500) }
+        }, 600L)
+
+        // Suara pujian kemenangan ("SURPRISE! GREAT JOB!")
+        if (isTtsReady) {
+            tts?.setPitch(1.18f)
+            tts?.setSpeechRate(1.05f)
+            val params = Bundle().apply { putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_ALARM) }
+            tts?.speak(
+                "SURPRISE! YOU DID IT! Great job champion! All 5 missions completed. Have an awesome productive day!",
+                TextToSpeech.QUEUE_FLUSH,
+                params,
+                "IRON_WAKE_CELEBRATION"
+            )
+        }
+    }
+
     private fun forceMaxAlarmVolume() {
-        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-        audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0)
+        runCatching {
+            val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+            audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0)
+        }
     }
 
     override fun onInit(status: Int) {
@@ -511,7 +655,9 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
             tts?.setPitch(0.85f)
             tts?.setSpeechRate(1.1f)
             isTtsReady = true
-            speakMotivation()
+            if (isAlarmRinging && mediaPlayer == null && !isCelebrating) {
+                speakMotivation()
+            }
         }
     }
 
@@ -524,11 +670,13 @@ class AlarmService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         isAlarmRinging = false
+        isCelebrating = false
+        isTestMode = false
         handler.removeCallbacks(enforcementRunnable)
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
-        tts?.stop()
-        tts?.shutdown()
+        runCatching { mediaPlayer?.stop(); mediaPlayer?.release() }
+        runCatching { ringtone?.stop() }
+        runCatching { toneGenerator?.release() }
+        runCatching { tts?.stop(); tts?.shutdown() }
         vibrator?.cancel()
         super.onDestroy()
     }
@@ -556,41 +704,74 @@ import com.example.ironwake.ui.theme.IronWakeTheme
 
 class AlarmRingingActivity : ComponentActivity() {
     private var missionCompleted = false
+    private var isTestMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        isTestMode = intent.getBooleanExtra("IS_TEST_MODE", AlarmService.isTestMode)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
             (getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).requestDismissKeyguard(this, null)
         } else {
             @Suppress("DEPRECATION")
-            window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {}
+            override fun handleOnBackPressed() {
+                if (isTestMode || missionCompleted) {
+                    exitAlarmCompletely()
+                }
+            }
         })
 
         val prefs = getSharedPreferences("IronWakePrefs", Context.MODE_PRIVATE)
         val motivationText = prefs.getString("motivation_text", "WAKE UP YOU LAZY KIDS!") ?: "WAKE UP YOU LAZY KIDS!"
         val difficulty = Difficulty.valueOf(prefs.getString("difficulty", Difficulty.NORMAL.name) ?: Difficulty.NORMAL.name)
-        val enabledTopics = prefs.getStringSet("enabled_topics", null)?.mapNotNull { runCatching { MathTopic.valueOf(it) }.getOrNull() }?.toSet() ?: MathTopic.entries.toSet()
+        val enabledTopics = prefs.getStringSet("enabled_topics", null)
+            ?.mapNotNull { runCatching { MathTopic.valueOf(it) }.getOrNull() }
+            ?.toSet() ?: MathTopic.entries.toSet()
 
         setContent {
             IronWakeTheme {
-                RingingScreen(motivationText, enabledTopics, difficulty) {
-                    missionCompleted = true
-                    stopService(Intent(this, AlarmService::class.java))
-                    finish()
-                }
+                RingingScreen(
+                    motivationText = motivationText,
+                    enabledTopics = enabledTopics,
+                    difficulty = difficulty,
+                    isTestMode = isTestMode,
+                    onExitTestMode = {
+                        exitAlarmCompletely()
+                    },
+                    onAllMissionsCompleted = {
+                        missionCompleted = true
+                        val celebrateIntent = Intent(this, AlarmService::class.java).apply {
+                            action = AlarmService.ACTION_CELEBRATE
+                        }
+                        startService(celebrateIntent)
+                    },
+                    onFinishCelebration = {
+                        exitAlarmCompletely()
+                    }
+                )
             }
         }
     }
 
+    private fun exitAlarmCompletely() {
+        missionCompleted = true
+        stopService(Intent(this, AlarmService::class.java))
+        finish()
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (!missionCompleted && AlarmService.isAlarmRinging) {
+        if (!missionCompleted && !isTestMode && AlarmService.isAlarmRinging) {
             startActivity(Intent(this, AlarmRingingActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
             })
@@ -606,10 +787,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -625,22 +810,40 @@ import com.example.ironwake.model.Difficulty
 import com.example.ironwake.model.MathTopic
 import com.example.ironwake.ui.theme.*
 import com.example.ironwake.util.MathGenerator
+import kotlin.random.Random
 
 @Composable
-fun RingingScreen(motivationText: String, enabledTopics: Set<MathTopic>, difficulty: Difficulty, onAllMissionsCompleted: () -> Unit) {
+fun RingingScreen(
+    motivationText: String,
+    enabledTopics: Set<MathTopic>,
+    difficulty: Difficulty,
+    isTestMode: Boolean,
+    onExitTestMode: () -> Unit,
+    onAllMissionsCompleted: () -> Unit,
+    onFinishCelebration: () -> Unit
+) {
     var currentStep by remember { mutableIntStateOf(1) }
     var currentProblem by remember { mutableStateOf(MathGenerator.generateProblem(enabledTopics, difficulty)) }
     var userAnswer by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isCelebrating by remember { mutableStateOf(false) }
 
     fun verifyAnswer() {
         val parsed = userAnswer.trim().toIntOrNull()
-        if (parsed == null) { errorMessage = "Masukkan angka bulat!"; return }
+        if (parsed == null) {
+            errorMessage = "Masukkan angka bulat!"
+            return
+        }
         if (parsed == currentProblem.correctAnswer) {
             errorMessage = null
             userAnswer = ""
-            if (currentStep >= 5) onAllMissionsCompleted()
-            else { currentStep++; currentProblem = MathGenerator.generateProblem(enabledTopics, difficulty) }
+            if (currentStep >= 5) {
+                isCelebrating = true
+                onAllMissionsCompleted()
+            } else {
+                currentStep++
+                currentProblem = MathGenerator.generateProblem(enabledTopics, difficulty)
+            }
         } else {
             errorMessage = "SALAH! Coba hitung lagi!"
             userAnswer = ""
@@ -648,42 +851,241 @@ fun RingingScreen(motivationText: String, enabledTopics: Set<MathTopic>, difficu
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Image(painter = painterResource(id = R.drawable.bg_boxer_punch), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(0.78f), Color.Black.copy(0.55f), Color.Black.copy(0.88f)))))
-        Column(modifier = Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 16.dp)) {
-                Text(motivationText.uppercase(), color = IronGold, fontSize = 30.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, lineHeight = 36.sp)
-                Spacer(Modifier.height(12.dp))
-                Surface(color = IronRed, shape = RoundedCornerShape(50), modifier = Modifier.border(1.5.dp, IronGold, RoundedCornerShape(50))) {
-                    Text("MISI DISIPLIN: $currentStep / 5", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
-                }
-            }
-            Card(colors = CardDefaults.cardColors(containerColor = Color(0xE6141418)), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().border(2.dp, IronRed, RoundedCornerShape(16.dp))) {
-                Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(currentProblem.topic.displayName.uppercase(), color = IronGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(12.dp))
-                    Text(currentProblem.question, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, lineHeight = 26.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Petunjuk: ${currentProblem.hint}", color = Color.LightGray, fontSize = 12.sp, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = userAnswer, onValueChange = { userAnswer = it }, label = { Text("Jawaban (Angka Bulat)") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { verifyAnswer() }),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = IronGold, unfocusedBorderColor = IronRed, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedLabelColor = IronGold),
-                        modifier = Modifier.fillMaxWidth()
+        Image(
+            painter = painterResource(id = R.drawable.bg_boxer_punch),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        if (isCelebrating) listOf(Color(0xD90A1F12), Color(0xCC0D0D0D), Color(0xE60A1F12))
+                        else listOf(Color.Black.copy(0.78f), Color.Black.copy(0.55f), Color.Black.copy(0.88f))
                     )
-                    if (errorMessage != null) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(errorMessage!!, color = IronCrimson, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Button(onClick = { verifyAnswer() }, colors = ButtonDefaults.buttonColors(containerColor = IronRed), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                        Text(if (currentStep < 5) "KUNCI JAWABAN ($currentStep/5)" else "MATIKAN ALARM SEKARANG!", color = Color.White, fontWeight = FontWeight.Black, fontSize = 16.sp)
-                    }
+                )
+        )
+
+        if (isCelebrating) {
+            // Efek konfeti emas & hijau di latar perayaan
+            val confettiPoints = remember {
+                List(45) {
+                    Triple(
+                        Random.nextFloat(),
+                        Random.nextFloat(),
+                        listOf(IronGold, IronEmerald, Color.White, IronRed).random()
+                    )
                 }
             }
-            Text("NO MUTE. NO SNOOZE. SELESAIKAN 5 SOAL.", color = Color.White.copy(0.75f), fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                confettiPoints.forEach { (rx, ry, col) ->
+                    drawCircle(
+                        color = col.copy(alpha = 0.75f),
+                        radius = 10f,
+                        center = Offset(rx * size.width, ry * size.height)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.EmojiEvents,
+                    contentDescription = null,
+                    tint = IronGold,
+                    modifier = Modifier.size(96.dp)
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = "SURPRISE! YOU DID IT!",
+                    color = IronGold,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "GREAT JOB, CHAMPION!",
+                    color = IronEmerald,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    text = "Semua 5 soal matematika SMA berhasil ditaklukkan. Otakmu sudah 100% aktif dan siap menjalani hari!",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 22.sp
+                )
+                Spacer(Modifier.height(32.dp))
+                Button(
+                    onClick = onFinishCelebration,
+                    colors = ButtonDefaults.buttonColors(containerColor = IronEmerald),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                ) {
+                    Text(
+                        text = "SELESAI & KEMBALI KE BERANDA",
+                        color = Color.Black,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 16.sp
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    if (isTestMode) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            FilledTonalButton(
+                                onClick = onExitTestMode,
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = IronGold,
+                                    contentColor = Color.Black
+                                ),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("KELUAR UJI COBA", fontWeight = FontWeight.Black, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = motivationText.uppercase(),
+                        color = IronGold,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 34.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Surface(
+                        color = IronRed,
+                        shape = RoundedCornerShape(50),
+                        modifier = Modifier.border(1.5.dp, IronGold, RoundedCornerShape(50))
+                    ) {
+                        Text(
+                            text = "MISI DISIPLIN: $currentStep / 5",
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xE6141418)),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(2.dp, IronRed, RoundedCornerShape(16.dp))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = currentProblem.topic.displayName.uppercase(),
+                            color = IronGold,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = currentProblem.question,
+                            color = Color.White,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 26.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Petunjuk: ${currentProblem.hint}",
+                            color = Color.LightGray,
+                            fontSize = 12.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = userAnswer,
+                            onValueChange = { userAnswer = it },
+                            label = { Text("Jawaban (Angka Bulat)") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(onDone = { verifyAnswer() }),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = IronGold,
+                                unfocusedBorderColor = IronRed,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedLabelColor = IronGold
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (errorMessage != null) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = errorMessage!!,
+                                color = IronCrimson,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = { verifyAnswer() },
+                            colors = ButtonDefaults.buttonColors(containerColor = IronRed),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                        ) {
+                            Text(
+                                text = if (currentStep < 5) "KUNCI JAWABAN ($currentStep/5)" else "MATIKAN ALARM SEKARANG!",
+                                color = Color.White,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = if (isTestMode) "MODE UJI COBA: Ketuk tombol kuning di kanan atas untuk keluar." else "NO MUTE. NO SNOOZE. SELESAIKAN 5 SOAL.",
+                    color = Color.White.copy(0.75f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
@@ -738,44 +1140,92 @@ fun HomeScreen() {
         if (isAlarmActive) AlarmScheduler.scheduleAlarm(context, h, m)
     }, hour, minute, true)
 
-    Column(modifier = Modifier.fillMaxSize().background(IronBlack).padding(20.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(IronBlack)
+            .padding(20.dp)
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp, bottom = 24.dp)) {
             Icon(Icons.Default.FitnessCenter, null, tint = IronGold, modifier = Modifier.size(32.dp))
             Spacer(Modifier.width(10.dp))
             Text("IRONWAKE ALARM", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
         }
-        Card(colors = CardDefaults.cardColors(containerColor = IronSurface), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().border(2.dp, if (isAlarmActive) IronGold else IronRed, RoundedCornerShape(20.dp))) {
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = IronSurface),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(2.dp, if (isAlarmActive) IronGold else IronRed, RoundedCornerShape(20.dp))
+        ) {
             Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("JADWAL BANGUN DISIPLIN", color = IronGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                Text(String.format(Locale.getDefault(), "%02d:%02d", hour, minute), color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Black, modifier = Modifier.clickable { timePickerDialog.show() })
+                Text(
+                    text = String.format(Locale.getDefault(), "%02d:%02d", hour, minute),
+                    color = Color.White,
+                    fontSize = 64.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.clickable { timePickerDialog.show() }
+                )
                 Text("Ketuk jam untuk mengubah waktu", color = Color.Gray, fontSize = 12.sp)
                 Spacer(Modifier.height(20.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Alarm, null, tint = IronRed)
                         Spacer(Modifier.width(8.dp))
                         Text(if (isAlarmActive) "ALARM AKTIF" else "ALARM NONAKTIF", color = Color.White, fontWeight = FontWeight.Bold)
                     }
-                    Switch(checked = isAlarmActive, onCheckedChange = { checked ->
-                        isAlarmActive = checked
-                        prefs.edit().putBoolean("alarm_active", checked).apply()
-                        if (checked) AlarmScheduler.scheduleAlarm(context, hour, minute) else AlarmScheduler.cancelAlarm(context)
-                    }, colors = SwitchDefaults.colors(checkedThumbColor = IronGold, checkedTrackColor = IronRed))
+                    Switch(
+                        checked = isAlarmActive,
+                        onCheckedChange = { checked ->
+                            isAlarmActive = checked
+                            prefs.edit().putBoolean("alarm_active", checked).apply()
+                            if (checked) AlarmScheduler.scheduleAlarm(context, hour, minute) else AlarmScheduler.cancelAlarm(context)
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = IronGold, checkedTrackColor = IronRed)
+                    )
                 }
             }
         }
+
         Spacer(Modifier.height(20.dp))
-        Button(onClick = { showMissionDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = IronGold), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(54.dp)) {
+
+        Button(
+            onClick = { showMissionDialog = true },
+            colors = ButtonDefaults.buttonColors(containerColor = IronGold),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+        ) {
             Icon(Icons.Default.Tune, null, tint = Color.Black)
             Spacer(Modifier.width(8.dp))
             Text("MODIFIKASI MISI", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 16.sp)
         }
+
         Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = {
-            val serviceIntent = Intent(context, AlarmService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(serviceIntent) else context.startService(serviceIntent)
-        }, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(50.dp)) {
+
+        OutlinedButton(
+            onClick = {
+                val serviceIntent = Intent(context, AlarmService::class.java).apply {
+                    putExtra("IS_TEST_MODE", true)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(serviceIntent)
+                else context.startService(serviceIntent)
+            },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+        ) {
             Icon(Icons.Default.PlayArrow, null, tint = IronRed)
             Spacer(Modifier.width(6.dp))
             Text("UJI COBA ALARM SEKARANG", color = IronRed, fontWeight = FontWeight.Bold)
@@ -784,7 +1234,8 @@ fun HomeScreen() {
 
     if (showMissionDialog) {
         AlertDialog(
-            onDismissRequest = { showMissionDialog = false }, containerColor = IronSurface,
+            onDismissRequest = { showMissionDialog = false },
+            containerColor = IronSurface,
             title = { Text("MODIFIKASI MISI DISIPLIN", color = IronGold, fontWeight = FontWeight.Black) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -799,23 +1250,39 @@ fun HomeScreen() {
                     Text("Pilih Materi SMA:", color = Color.White, fontWeight = FontWeight.Bold)
                     MathTopic.entries.forEach { topic ->
                         val isChecked = enabledTopics.contains(topic)
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable {
-                            if (isChecked && enabledTopics.size > 1) enabledTopics = enabledTopics - topic else enabledTopics = enabledTopics + topic
-                        }) {
-                            Checkbox(checked = isChecked, onCheckedChange = { checked ->
-                                if (!checked && enabledTopics.size <= 1) Toast.makeText(context, "Minimal pilih 1!", Toast.LENGTH_SHORT).show()
-                                else enabledTopics = if (checked) enabledTopics + topic else enabledTopics - topic
-                            }, colors = CheckboxDefaults.colors(checkedColor = IronRed))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (isChecked && enabledTopics.size > 1) enabledTopics = enabledTopics - topic else enabledTopics = enabledTopics + topic
+                                }
+                        ) {
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = { checked ->
+                                    if (!checked && enabledTopics.size <= 1) Toast.makeText(context, "Minimal pilih 1!", Toast.LENGTH_SHORT).show()
+                                    else enabledTopics = if (checked) enabledTopics + topic else enabledTopics - topic
+                                },
+                                colors = CheckboxDefaults.colors(checkedColor = IronRed)
+                            )
                             Text(topic.displayName, color = Color.White, fontSize = 14.sp)
                         }
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    prefs.edit().putString("motivation_text", motivationText.ifBlank { "WAKE UP YOU LAZY KIDS!" }).putString("difficulty", difficulty.name).putStringSet("enabled_topics", enabledTopics.map { it.name }.toSet()).apply()
-                    showMissionDialog = false
-                }, colors = ButtonDefaults.buttonColors(containerColor = IronRed)) { Text("SIMPAN", color = Color.White) }
+                Button(
+                    onClick = {
+                        prefs.edit()
+                            .putString("motivation_text", motivationText.ifBlank { "WAKE UP YOU LAZY KIDS!" })
+                            .putString("difficulty", difficulty.name)
+                            .putStringSet("enabled_topics", enabledTopics.map { it.name }.toSet())
+                            .apply()
+                        showMissionDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = IronRed)
+                ) { Text("SIMPAN", color = Color.White) }
             }
         )
     }
@@ -876,4 +1343,4 @@ for path, content in files.items():
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
-print("Semua file proyek IronWake berhasil dibuat!")
+print("Semua file proyek IronWake v2.0 berhasil dibuat!")
